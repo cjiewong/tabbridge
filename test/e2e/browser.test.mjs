@@ -37,14 +37,15 @@ test('real extension + native host + CLI/MCP transport end to end', { timeout: 1
     assert.ok(line, `Missing ${role} ${label} in ${snapshot.text}`);
     return line.match(/^\[([^\]]+)\]/)[1];
   };
-  try {
-    context = await chromium.launchPersistentContext(profile, {
+  const launchOptions = {
       ...(process.env.TABBRIDGE_TEST_CHROME ? { executablePath: process.env.TABBRIDGE_TEST_CHROME } : { channel: 'chromium' }),
       headless: process.env.TABBRIDGE_TEST_HEADED !== '1',
       args: [`--disable-extensions-except=${path.resolve('extension')}`, `--load-extension=${path.resolve('extension')}`],
       viewport: { width: 1000, height: 800 }
-    });
-    const popup = await context.newPage(); await popup.goto(`chrome-extension://${installed.extensionId}/popup.html`);
+    };
+  try {
+    context = await chromium.launchPersistentContext(profile, launchOptions);
+    let popup = await context.newPage(); await popup.goto(`chrome-extension://${installed.extensionId}/popup.html`);
     await popup.getByRole('button', { name: 'Connect', exact: true }).click();
     await t.test('native messaging handshake', async () => {
       await popup.getByRole('button', { name: 'Refresh', exact: true }).click();
@@ -147,6 +148,65 @@ test('real extension + native host + CLI/MCP transport end to end', { timeout: 1
       await userPage.goto(url.replace('127.0.0.1', 'localhost'));
       await assert.rejects(call('snapshot', { tabId }), e => ['TAB_NOT_GRANTED', 'ORIGIN_CHANGED'].includes(e.code));
     });
+    let globalTabId;
+    await t.test('all-web-tabs option discovers unshared tabs and actions auto-claim', async () => {
+      assert.equal((await call('status')).allowAllTabs, false);
+      await popup.getByRole('checkbox', { name: /^All web tabs/ }).check();
+      assert.equal((await call('status')).allowAllTabs, true);
+      const visible = (await call('tabs')).tabs;
+      assert.ok(visible.some(t => t.tabId === tabId));
+      assert.ok(visible.every(t => /^https?:/.test(t.url)));
+      const result = await call('snapshot', { tabId });
+      assert.match(result.text, /Test desk/); // no Share and no explicit claim
+      await assert.rejects(call('snapshot', { tabId }, 'other'), { code: 'SESSION_CONFLICT' });
+      assert.ok(!(await call('tabs', {}, 'other')).tabs.some(t => t.tabId === tabId));
+      await assert.rejects(call('close', { tabId }), { code: 'USER_TAB' });
+    });
+    await t.test('all-tab access covers future tabs and cross-origin navigation', async () => {
+      const future = await context.newPage(); await future.goto(url + 'future');
+      globalTabId = (await call('tabs')).tabs.find(t => t.url === url + 'future').tabId;
+      await call('snapshot', { tabId: globalTabId });
+      await call('navigate', { tabId: globalTabId, url: url.replace('127.0.0.1', 'localhost') + 'next' });
+      await call('wait', { tabId: globalTabId, text: 'Next page' });
+      assert.match((await call('snapshot', { tabId: globalTabId })).url, /localhost/);
+      await popup.getByRole('button', { name: 'Refresh', exact: true }).click();
+      await popup.locator('body').screenshot({ path: 'artifacts/extension-all-tabs.png' });
+    });
+    await t.test('per-tab block overrides global access until explicitly allowed', async () => {
+      await popup.getByRole('button', { name: 'Block Next', exact: true }).click();
+      assert.ok(!(await call('tabs')).tabs.some(t => t.tabId === globalTabId));
+      await assert.rejects(call('snapshot', { tabId: globalTabId }), { code: 'TAB_BLOCKED' });
+      await assert.rejects(call('claim', { tabId: globalTabId }), { code: 'TAB_BLOCKED' });
+      await popup.getByRole('button', { name: 'Allow Next', exact: true }).click();
+      assert.match((await call('snapshot', { tabId: globalTabId })).text, /Next page/);
+    });
+    await t.test('disabling all-tab access revokes global leases and restores manual sharing', async () => {
+      await popup.getByRole('checkbox', { name: /^All web tabs/ }).uncheck();
+      assert.equal((await call('status')).allowAllTabs, false);
+      assert.deepEqual((await call('tabs')).tabs, []);
+      await assert.rejects(call('snapshot', { tabId: globalTabId }), { code: 'TAB_NOT_GRANTED' });
+      await popup.getByRole('button', { name: 'Share Next', exact: true }).click();
+      await call('claim', { tabId: globalTabId });
+      assert.match((await call('snapshot', { tabId: globalTabId })).text, /Next page/);
+    });
+    await t.test('existing manual grants survive toggling global access at the same origin', async () => {
+      await popup.getByRole('checkbox', { name: /^All web tabs/ }).check();
+      await popup.getByRole('checkbox', { name: /^All web tabs/ }).uncheck();
+      assert.match((await call('snapshot', { tabId: globalTabId })).text, /Next page/);
+      await popup.getByRole('button', { name: 'Revoke Next', exact: true }).click();
+    });
+    await t.test('revoking global access stops queued actions on globally claimed tabs', async () => {
+      await popup.getByRole('checkbox', { name: /^All web tabs/ }).check();
+      const fresh = await call('snapshot', { tabId });
+      const blockerDone = call('wait', { tabId, text: 'not present during revocation', timeoutMs: 1500 }).catch(e => e);
+      await new Promise(r => setTimeout(r, 100));
+      const queuedResult = call('click', { tabId, ref: refFor(fresh, 'button', 'Save') }).catch(e => e);
+      await popup.getByRole('checkbox', { name: /^All web tabs/ }).uncheck();
+      await blockerDone;
+      const refused = await queuedResult;
+      assert.equal(refused.code, 'TAB_NOT_GRANTED');
+      assert.equal(await userPage.evaluate(() => window.saves || 0), 0);
+    });
     await t.test('agent-created tabs are isolated and can be closed', async () => {
       await popup.getByRole('checkbox', { name: /Agent-created tabs/ }).check();
       const own = await call('open', { url });
@@ -163,11 +223,31 @@ test('real extension + native host + CLI/MCP transport end to end', { timeout: 1
       for (let i = 0; i < 50; i++) { await new Promise(r => setTimeout(r, 100)); try { result = await call('status'); if (result.connected) break; } catch {} }
       assert.equal(result?.connected, true);
     });
+    await t.test('global opt-in survives a full Chrome restart and authorizes fresh tabs', async () => {
+      await popup.getByRole('checkbox', { name: /^All web tabs/ }).check();
+      assert.equal((await call('status')).allowAllTabs, true);
+      await context.close();
+      context = await chromium.launchPersistentContext(profile, launchOptions);
+      popup = await context.newPage(); await popup.goto(`chrome-extension://${installed.extensionId}/popup.html`);
+      let status;
+      for (let i = 0; i < 50; i++) {
+        try { status = await call('status'); if (status.connected) break; } catch {}
+        await new Promise(r => setTimeout(r, 100));
+      }
+      assert.equal(status?.allowAllTabs, true);
+      const page = await context.newPage(); await page.goto(url + 'restarted');
+      const freshTab = (await call('tabs')).tabs.find(t => t.url === url + 'restarted');
+      assert.ok(freshTab);
+      assert.match((await call('snapshot', { tabId: freshTab.tabId })).text, /Test desk/);
+    });
     await popup.getByRole('button', { name: 'Refresh', exact: true }).click();
     await popup.locator('body').screenshot({ path: 'artifacts/extension-popup.png' });
     await t.test('stop disconnects and revokes everything', async () => {
+      await popup.getByRole('checkbox', { name: /^All web tabs/ }).check();
       await popup.getByRole('button', { name: 'Stop & revoke all', exact: true }).click();
       await assert.rejects(call('status'), e => ['NOT_CONNECTED', 'DISCONNECTED'].includes(e.code));
+      await popup.waitForFunction(() => !document.getElementById('all-tabs').checked);
+      assert.equal(await popup.getByRole('checkbox', { name: /^All web tabs/ }).isChecked(), false);
     });
   } finally {
     await context?.close(); await new Promise(resolve => server.close(resolve));

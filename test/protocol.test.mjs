@@ -29,3 +29,10 @@ test('tab grants enforce ownership and origin independently', () => {
   assert.equal(requireLease(lease, 'alpha', 'https://example.com/page').hostname, 'example.com');
   for (const url of ['file:///etc/passwd', 'javascript:alert(1)', 'https://user:password@example.com']) assert.throws(() => webURL(url));
 });
+test('all-tab grants require the active option and still enforce ownership and web schemes', () => {
+  const lease = { session: 'alpha', owned: false, origin: 'https://example.com', grant: 'all' };
+  assert.throws(() => requireLease(lease, 'alpha', 'https://example.com'), { code: 'TAB_NOT_GRANTED' });
+  assert.equal(requireLease(lease, 'alpha', 'https://other.example', { allowAllTabs: true }).hostname, 'other.example');
+  assert.throws(() => requireLease(lease, 'beta', 'https://other.example', { allowAllTabs: true }), { code: 'SESSION_CONFLICT' });
+  assert.throws(() => requireLease(lease, 'alpha', 'chrome://settings', { allowAllTabs: true }), { code: 'INVALID_URL' });
+});

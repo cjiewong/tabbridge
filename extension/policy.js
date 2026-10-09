@@ -12,10 +12,11 @@ export function requireTabId(value) {
   return value;
 }
 export function validSession(value) { return typeof value === 'string' && /^[a-zA-Z0-9_-]{1,80}$/.test(value); }
-export function requireLease(lease, session, url) {
+export function requireLease(lease, session, url, { allowAllTabs = false } = {}) {
   if (!lease) fail('TAB_NOT_GRANTED', 'Share this tab from the TabBridge popup first');
+  if (lease.grant === 'all' && !allowAllTabs) fail('TAB_NOT_GRANTED', 'All-web-tabs access was disabled. Share this tab explicitly');
   if (lease.session !== session) fail('SESSION_CONFLICT', lease.session ? 'This tab belongs to another session' : 'Claim the shared tab first');
   const current = webURL(url);
-  if (!lease.owned && current.origin !== lease.origin) fail('ORIGIN_CHANGED', 'This shared tab changed origin. Share it again from the popup');
+  if (!lease.owned && !allowAllTabs && current.origin !== lease.origin) fail('ORIGIN_CHANGED', 'This shared tab changed origin. Share it again from the popup');
   return current;
 }

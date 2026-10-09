@@ -6,7 +6,7 @@ TabBridge is an independent, local browser automation toolkit for Codex CLI and 
 
 [简体中文](README.zh-CN.md) · [Security model](docs/SECURITY.md) · [Architecture](docs/ARCHITECTURE.md) · [Agent guide](docs/AGENT_GUIDE.md)
 
-> **Early release (0.1).** This is an independently implemented project, not an OpenAI plugin or an official compatibility layer. It does not connect to private ChatGPT pipes, copy official plugin code, or bypass their authorization checks.
+> **Early release (0.2).** This is an independently implemented project, not an OpenAI plugin or an official compatibility layer. It does not connect to private ChatGPT pipes, copy official plugin code, or bypass their authorization checks.
 
 <img src="docs/assets/popup.png" width="410" alt="TabBridge extension popup showing connection status and explicit tab sharing">
 
@@ -14,6 +14,7 @@ TabBridge is an independent, local browser automation toolkit for Codex CLI and 
 
 - Connect an existing Chrome profile through Chrome Native Messaging. No debug TCP port or cloud relay.
 - Share individual user tabs. Claim a tab for one CLI/MCP session; other sessions cannot operate it.
+- Or enable **All web tabs** once: CLI/MCP can discover and automatically claim all current and future HTTP(S) tabs, with per-tab Block/Allow controls.
 - Optionally let agents create their own background tabs. User tabs are never automatically closed.
 - Read compact accessibility snapshots, use element references, and request state differences.
 - Click, fill, select, press keys, scroll, navigate, wait for text, and inspect JavaScript dialogs.
@@ -44,10 +45,16 @@ The runtime has **zero npm dependencies**. `npm install` is only needed for deve
 1. Open `chrome://extensions` and enable **Developer mode**.
 2. Choose **Load unpacked**, selecting this repository's `extension/` directory.
 3. Pin TabBridge, open its popup, and press **Connect**.
-4. Press **Share** beside a tab you want an agent to use. The grant covers its page and frames.
+4. Press **Share** beside a tab you want an agent to use, or enable **All web tabs** to allow CLI/MCP access without individual sharing. Both include page content and frames.
 5. Run `node bin/tabbridge.mjs doctor`.
 
-Agent-created tabs and developer JavaScript are **off by default**. Enable them individually in the popup if needed. **Stop & revoke all** disconnects the bridge and disables both options.
+All-web-tabs access, agent-created tabs and developer JavaScript are **off by default**. Enable them individually in the popup if needed. **Stop & revoke all** disconnects the bridge and disables all three options.
+
+### Access all tabs without sharing individually
+
+Enable **All web tabs** in the popup. CLI/MCP then discovers all HTTP(S) tabs in the connected Chrome profile, including existing signed-in pages and tabs opened later. The first ordinary action automatically claims the tab for its session; no individual Share or explicit claim is necessary. The setting persists across Chrome restarts and allows cross-origin web navigation. Chrome internal pages and tabs held by other sessions remain excluded.
+
+Use **Block** beside a tab to exclude it; **Allow** restores eligibility. These tab-specific blocks last for that browser session/tab lifetime. Turning the global option off revokes globally acquired leases and restores individual sharing, while preserving valid manual grants and agent-owned tabs. Stop also turns the option off. Neither mode allows an agent to close a user-owned tab.
 
 Setup only registers `io.github.cjiewong.tabbridge` in your user-level Chrome Native Messaging directory. It does not alter other extensions or their native hosts. You can select `--browser chromium`, `--browser edge`, or `--browser testing`; these registration paths are provided but require testing on your platform.
 
@@ -113,7 +120,7 @@ TabBridge extension
 Chrome tabs + debugger APIs
 ```
 
-User-tab grants are scoped to the current top-level origin. Cross-origin navigation revokes the grant. They survive a native-host reconnect, but expire when Chrome restarts. A user-shared tab requires `claim` before use. Other sessions do not see claimed tabs.
+Individual user-tab grants are scoped to the current top-level origin. Cross-origin navigation revokes them unless All web tabs is active. Individual grants survive a native-host reconnect but expire when Chrome restarts; the global access setting persists. With global access off, a user-shared tab requires `claim` before use. Other sessions do not see claimed tabs in either mode.
 
 The local socket is trusted at the **OS-user boundary**: another process running as you can act as a client. Session names prevent accidental collisions, not hostile same-user impersonation. Never expose this socket over a network. See [Security](docs/SECURITY.md).
 

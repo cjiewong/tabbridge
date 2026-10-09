@@ -1,12 +1,12 @@
 # Validation
 
-Validated locally on 2026-10-09 using macOS (Apple Silicon), Node.js 25.8.1 and Chrome for Testing 152.0.7977.54. Chrome runs in a disposable profile with an isolated Native Messaging registration and a local HTTP fixture. No ordinary browser profile or signed-in website was used.
+Validated locally on 2026-10-10 using macOS (Apple Silicon), Node.js 25.8.1 and Chrome for Testing 152.0.7977.54. Chrome runs in a disposable profile with an isolated Native Messaging registration and a local HTTP fixture. No ordinary browser profile or signed-in website was used.
 
 ## Checks passed
 
 - JavaScript syntax and extension resource checks.
-- 5 unit/MCP compatibility tests: fragmented framing, malformed/truncated frames, request validation, independent lease/origin checks, and negotiation with the official MCP SDK.
-- 15 real-browser checks within the E2E suite:
+- 6 unit/MCP compatibility tests: fragmented framing, malformed/truncated frames, request validation, independent lease/origin checks, and negotiation with the official MCP SDK.
+- 22 real-browser checks within the E2E suite:
   1. Chrome extension → Native Messaging host handshake.
   2. Unshared tabs remain absent from agent discovery; new tabs disabled by default.
   3. Explicit claim, session isolation, user-tab close refusal and origin scope.
@@ -21,7 +21,14 @@ Validated locally on 2026-10-09 using macOS (Apple Silicon), Node.js 25.8.1 and 
   12. Cross-origin navigation revokes a shared tab grant.
   13. Agent-created tabs are session-isolated and closable.
   14. Native-host restart reconnects without restarting Chrome.
-  15. Stop disconnects and revokes access.
+  15. Stop disconnects, revokes access and disables the global option.
+  16. Global discovery exposes unshared web tabs; first use auto-claims without Share.
+  17. Global access covers future tabs and cross-origin web navigation.
+  18. Per-tab Block overrides global access until Allow is selected.
+  19. Disabling global access revokes global leases and restores manual sharing.
+  20. Valid individual grants survive toggling the global option.
+  21. Revoking global access prevents queued actions from executing.
+  22. Global opt-in survives a full Chrome restart and authorizes fresh tabs.
 
 ## Scope of evidence
 

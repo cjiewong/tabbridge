@@ -12,9 +12,9 @@ CLI requests and native messages use 4-byte little-endian length-prefixed JSON. 
 
 ## Ownership
 
-The extension stores tab leases in `chrome.storage.session`. A lease records tab ID, origin, session owner and whether the tab was created by an agent. User grants initially have no session; the first explicit claim sets ownership. CLI session names are supplied by the caller. MCP defaults to a random process-specific session.
+The extension stores tab leases in `chrome.storage.session`. A lease records tab ID, origin, session owner, whether the tab was created by an agent, and whether access came from the global option. User grants initially have no session; the first explicit claim sets ownership. With All web tabs enabled, discovery covers eligible HTTP(S) tabs and the first action auto-claims an unowned tab. The global option persists in local storage; per-tab exclusions live in session storage. Disabling it invalidates global leases while retaining valid individual grants. CLI session names are supplied by the caller. MCP defaults to a random process-specific session.
 
-Concurrent operations on one tab are serialized. Different tabs can progress independently. User tab access expires on cross-origin navigation and all grants expire on browser restart. Revocation detaches the debugger and discards snapshots. Release keeps the browser tab open.
+Concurrent operations on one tab are serialized. Different tabs can progress independently. Individual user tab access expires on cross-origin navigation unless global access is active. Tab leases and per-tab exclusions expire on browser restart, while the user-selected All web tabs setting persists. Revocation detaches the debugger and discards snapshots. Release keeps the browser tab open.
 
 ## Observation and actions
 

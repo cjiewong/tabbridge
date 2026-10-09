@@ -4,11 +4,13 @@ TabBridge is a browser-control tool. Install it only for agents and local applic
 
 ## What grants mean
 
-A shared tab permits inspection and interaction with its page, including embedded content. The default grants no tabs. Sharing is performed in the extension UI, never by an agent calling the socket. Tabs created by an agent require the separate **Agent-created tabs** option and belong to that agent session. Such tabs may navigate to any HTTP(S) origin, including local network addresses. Disable the option if that scope is unsuitable.
+A shared tab permits inspection and interaction with its page, including embedded content. The default grants no tabs. Sharing or enabling **All web tabs** is performed in the extension UI, never by an agent calling the socket. Tabs created by an agent require the separate **Agent-created tabs** option and belong to that agent session. Such tabs may navigate to any HTTP(S) origin, including local network addresses. Disable the option if that scope is unsuitable.
 
-The `debugger` extension permission is powerful. The implementation restricts it to granted/owned tabs, but Chrome's extension permission itself is broader. Do not infer that the application layer can contain arbitrary malicious changes to the extension.
+The `debugger` extension permission is powerful. The implementation restricts it to tabs covered by the selected access mode, but Chrome's extension permission itself is broader. Do not infer that the application layer can contain arbitrary malicious changes to the extension.
 
 JavaScript evaluation can read and modify a granted page. It is disabled by default, requires a separate popup toggle, and is not described as read-only. Chrome protected pages remain outside the supported target set.
+
+**All web tabs** explicitly grants CLI/MCP access to every current and future HTTP(S) tab in the connected Chrome profile, including signed-in pages and cross-origin navigation. It persists across Chrome restarts. First use automatically assigns a tab to the requesting session; other sessions cannot steal it, and agents cannot close user-owned tabs. Individual Block controls override global access for the lifetime of that tab/browser session. Turning off global access revokes global leases; valid manual grants and agent-owned tabs remain. Stop turns global access off too. Browser-internal URLs remain unsupported. This mode is broad access, not a site allowlist.
 
 ## Local trust
 
