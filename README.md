@@ -15,7 +15,7 @@ TabBridge is an independent, local browser automation toolkit for Codex CLI and 
 - Connect an existing Chrome profile through Chrome Native Messaging. No debug TCP port or cloud relay.
 - Share individual user tabs. Claim a tab for one CLI/MCP session; other sessions cannot operate it.
 - Or enable **All web tabs** once: CLI/MCP can discover and automatically claim all current and future HTTP(S) tabs, with per-tab Block/Allow controls.
-- Optionally let agents create their own background tabs. User tabs are never automatically closed.
+- Optionally let agents create their own background tabs. User tabs are retained during routine cleanup; All web tabs also permits explicitly requested closure.
 - Read compact accessibility snapshots, use element references, and request state differences.
 - Click, fill, select, press keys, scroll, navigate, wait for text, and inspect JavaScript dialogs.
 - Capture viewport PNGs and read bounded in-memory console messages.
@@ -54,7 +54,7 @@ All-web-tabs access, agent-created tabs and developer JavaScript are **off by de
 
 Enable **All web tabs** in the popup. CLI/MCP then discovers all HTTP(S) tabs in the connected Chrome profile, including existing signed-in pages and tabs opened later. The first ordinary action automatically claims the tab for its session; no individual Share or explicit claim is necessary. The setting persists across Chrome restarts and allows cross-origin web navigation. Chrome internal pages and tabs held by other sessions remain excluded.
 
-Use **Block** beside a tab to exclude it; **Allow** restores eligibility. These tab-specific blocks last for that browser session/tab lifetime. Turning the global option off revokes globally acquired leases and restores individual sharing, while preserving valid manual grants and agent-owned tabs. Stop also turns the option off. Neither mode allows an agent to close a user-owned tab.
+Use **Block** beside a tab to exclude it; **Allow** restores eligibility. These tab-specific blocks last for that browser session/tab lifetime. Turning the global option off revokes globally acquired leases and restores individual sharing, while preserving valid manual grants and agent-owned tabs. Stop also turns the option off. All web tabs also permits closing user-owned tabs controlled by the requesting session. With the option off, only agent-created tabs can be closed. Agents should close user tabs only when requested.
 
 Setup only registers `io.github.cjiewong.tabbridge` in your user-level Chrome Native Messaging directory. It does not alter other extensions or their native hosts. You can select `--browser chromium`, `--browser edge`, or `--browser testing`; these registration paths are provided but require testing on your platform.
 

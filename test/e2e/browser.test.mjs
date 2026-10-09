@@ -160,7 +160,15 @@ test('real extension + native host + CLI/MCP transport end to end', { timeout: 1
       assert.match(result.text, /Test desk/); // no Share and no explicit claim
       await assert.rejects(call('snapshot', { tabId }, 'other'), { code: 'SESSION_CONFLICT' });
       assert.ok(!(await call('tabs', {}, 'other')).tabs.some(t => t.tabId === tabId));
-      await assert.rejects(call('close', { tabId }), { code: 'USER_TAB' });
+      await assert.rejects(call('close', { tabId }, 'other'), { code: 'SESSION_CONFLICT' });
+    });
+    await t.test('all-web-tabs mode closes an existing user tab without Share or claim', async () => {
+      const disposable = await context.newPage(); await disposable.goto(url + 'close-existing');
+      const target = (await call('tabs')).tabs.find(t => t.url === url + 'close-existing');
+      const closed = disposable.waitForEvent('close');
+      assert.deepEqual(await call('close', { tabId: target.tabId }), { closed: target.tabId });
+      await closed;
+      assert.ok(!(await call('tabs')).tabs.some(t => t.tabId === target.tabId));
     });
     await t.test('all-tab access covers future tabs and cross-origin navigation', async () => {
       const future = await context.newPage(); await future.goto(url + 'future');
@@ -177,6 +185,7 @@ test('real extension + native host + CLI/MCP transport end to end', { timeout: 1
       assert.ok(!(await call('tabs')).tabs.some(t => t.tabId === globalTabId));
       await assert.rejects(call('snapshot', { tabId: globalTabId }), { code: 'TAB_BLOCKED' });
       await assert.rejects(call('claim', { tabId: globalTabId }), { code: 'TAB_BLOCKED' });
+      await assert.rejects(call('close', { tabId: globalTabId }), { code: 'TAB_BLOCKED' });
       await popup.getByRole('button', { name: 'Allow Next', exact: true }).click();
       assert.match((await call('snapshot', { tabId: globalTabId })).text, /Next page/);
     });
@@ -185,9 +194,11 @@ test('real extension + native host + CLI/MCP transport end to end', { timeout: 1
       assert.equal((await call('status')).allowAllTabs, false);
       assert.deepEqual((await call('tabs')).tabs, []);
       await assert.rejects(call('snapshot', { tabId: globalTabId }), { code: 'TAB_NOT_GRANTED' });
+      await assert.rejects(call('close', { tabId: globalTabId }), { code: 'TAB_NOT_GRANTED' });
       await popup.getByRole('button', { name: 'Share Next', exact: true }).click();
       await call('claim', { tabId: globalTabId });
       assert.match((await call('snapshot', { tabId: globalTabId })).text, /Next page/);
+      await assert.rejects(call('close', { tabId: globalTabId }), { code: 'USER_TAB' });
     });
     await t.test('existing manual grants survive toggling global access at the same origin', async () => {
       await popup.getByRole('checkbox', { name: /^All web tabs/ }).check();

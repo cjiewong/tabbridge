@@ -61,7 +61,7 @@ node bin/tabbridge.mjs screenshot 123 --out page.png --session demo
 node bin/tabbridge.mjs release 123 --session demo
 ```
 
-用户原有标签不能被 Agent 关闭；Agent 自己创建的临时标签可关闭。逐个分享模式下，用户标签跨域后自动撤销授权，Chrome 重启后需要重新分享。所有网页模式下无需重新分享。超时意味着结果可能未知，不能盲目重复提交。
+开启 All web tabs 后，Agent 可以按你的指令关闭当前会话接管的用户标签；关闭该选项时，只能关闭 Agent 自己创建的标签。日常清理仍应保留用户原有标签。逐个分享模式下，用户标签跨域后自动撤销授权，Chrome 重启后需要重新分享。所有网页模式下无需重新分享。超时意味着结果可能未知，不能盲目重复提交。
 
 ## 项目状态
 

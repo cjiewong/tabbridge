@@ -5,7 +5,7 @@
   <main>
     <section class="connection"><div><span id="dot" class="dot"></span><strong id="status">Checking connection…</strong></div><button id="connect">Connect</button></section>
     <p id="error" role="status"></p>
-    <section class="settings"><label><span><strong>All web tabs</strong><small>CLI/MCP can access all current and future HTTP(S) tabs, including signed-in pages. No individual sharing needed.</small></span><input id="all-tabs" type="checkbox"></label><label><span><strong>Agent-created tabs</strong><small>Agents may open and control new HTTP(S) tabs.</small></span><input id="new-tabs" type="checkbox"></label><label><span><strong>JavaScript evaluation</strong><small>Developer access within accessible tabs.</small></span><input id="developer" type="checkbox"></label></section>
+    <section class="settings"><label><span><strong>All web tabs</strong><small>CLI/MCP can read, control and close all current and future HTTP(S) tabs, including signed-in pages. No individual sharing needed.</small></span><input id="all-tabs" type="checkbox"></label><label><span><strong>Agent-created tabs</strong><small>Agents may open and control new HTTP(S) tabs.</small></span><input id="new-tabs" type="checkbox"></label><label><span><strong>JavaScript evaluation</strong><small>Developer access within accessible tabs.</small></span><input id="developer" type="checkbox"></label></section>
     <div class="section-heading"><h2 id="tabs-heading">Share a tab</h2><button class="text-button" id="refresh">Refresh</button></div>
     <p class="hint" id="access-hint">Shared tabs include their page content and frames. Access ends when you revoke it, the origin changes, or Chrome restarts.</p>
     <div id="tabs" aria-live="polite"></div>

@@ -102,7 +102,7 @@ async function dispatch(method, params, session, deadline, control) {
     await saveLeases(); return { released: tabId, tabKeptOpen: true };
   }
   if (method === 'close') {
-    if (!lease.owned) fail('USER_TAB', 'Agent cannot close a user-owned tab. Release it instead');
+    if (!lease.owned && !allAccess(tabId)) fail('USER_TAB', 'Enable All web tabs to close a user-owned tab, or release it instead');
     await chrome.tabs.remove(tabId); delete leases[tabId]; await saveLeases(); return { closed: tabId };
   }
   if (method === 'batch') {

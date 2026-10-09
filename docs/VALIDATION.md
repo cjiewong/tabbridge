@@ -6,7 +6,7 @@ Validated locally on 2026-10-10 using macOS (Apple Silicon), Node.js 25.8.1 and 
 
 - JavaScript syntax and extension resource checks.
 - 6 unit/MCP compatibility tests: fragmented framing, malformed/truncated frames, request validation, independent lease/origin checks, and negotiation with the official MCP SDK.
-- 22 real-browser checks within the E2E suite:
+- 23 real-browser checks within the E2E suite:
   1. Chrome extension → Native Messaging host handshake.
   2. Unshared tabs remain absent from agent discovery; new tabs disabled by default.
   3. Explicit claim, session isolation, user-tab close refusal and origin scope.
@@ -29,6 +29,7 @@ Validated locally on 2026-10-10 using macOS (Apple Silicon), Node.js 25.8.1 and 
   20. Valid individual grants survive toggling the global option.
   21. Revoking global access prevents queued actions from executing.
   22. Global opt-in survives a full Chrome restart and authorizes fresh tabs.
+  23. Global mode closes an existing user tab without Share/claim; blocked, foreign-session and individual-mode close requests remain rejected.
 
 ## Scope of evidence
 

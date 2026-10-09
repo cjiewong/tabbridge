@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.1 — 2026-10-10
+
+- Allow closing user-owned tabs controlled by the requesting session when All web tabs is enabled, including tabs whose creation ownership was lost after a reload.
+- Preserve close refusal for individual-sharing mode, blocked tabs and other sessions' tabs.
+- Clarify close access in the popup, MCP tools, agent instructions and English/Chinese documentation.
+
 ## 0.2.0 — 2026-10-10
 
 - Add the opt-in **All web tabs** mode: CLI/MCP can discover and auto-claim current and future HTTP(S) tabs without individual Share or claim steps.
