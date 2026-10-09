@@ -1,0 +1,18 @@
+{
+  "name": "@cjiewong/tabbridge",
+  "version": "0.1.0",
+  "description": "Local Chrome automation for CLI agents: explicit tab grants, native messaging, CLI and MCP.",
+  "type": "module",
+  "license": "MIT",
+  "engines": { "node": ">=22" },
+  "bin": { "tabbridge": "bin/tabbridge.mjs" },
+  "files": ["bin", "lib", "extension", "README.md", "LICENSE", "docs"],
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "test:e2e": "node --test --test-concurrency=1 test/e2e/*.test.mjs",
+    "check": "node scripts/check.mjs",
+    "pack:extension": "node scripts/package-extension.mjs"
+  },
+  "devDependencies": { "@modelcontextprotocol/sdk": "^1.0.0", "playwright": "^1.0.0" },
+  "repository": { "type": "git", "url": "https://github.com/cjiewong/tabbridge.git" }
+}

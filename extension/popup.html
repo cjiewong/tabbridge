@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>TabBridge</title><link rel="stylesheet" href="popup.css"></head>
+<body>
+  <header><div class="brand"><span class="mark">↔</span><div><h1>TabBridge</h1><p>Your browser. Your call.</p></div></div><span class="version">0.1</span></header>
+  <main>
+    <section class="connection"><div><span id="dot" class="dot"></span><strong id="status">Checking connection…</strong></div><button id="connect">Connect</button></section>
+    <p id="error" role="status"></p>
+    <section class="settings"><label><span><strong>Agent-created tabs</strong><small>Agents may open and control new HTTP(S) tabs.</small></span><input id="new-tabs" type="checkbox"></label><label><span><strong>JavaScript evaluation</strong><small>Developer access within shared or owned tabs.</small></span><input id="developer" type="checkbox"></label></section>
+    <div class="section-heading"><h2>Share a tab</h2><button class="text-button" id="refresh">Refresh</button></div>
+    <p class="hint">Shared tabs include their page content and frames. Access ends when you revoke it, the origin changes, or Chrome restarts.</p>
+    <div id="tabs" aria-live="polite"></div>
+    <section class="empty" id="empty" hidden>No web tabs are open.</section>
+  </main>
+  <footer><span>Local connection · No cloud relay</span><button id="stop" class="stop">Stop & revoke all</button></footer>
+  <script src="popup.js" type="module"></script>
+</body></html>

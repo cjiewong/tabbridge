@@ -1,0 +1,36 @@
+{
+  "manifest_version": 3,
+  "name": "TabBridge",
+  "version": "0.1.0",
+  "description": "Connect CLI agents to the Chrome tabs you explicitly share. Local-only, open source.",
+  "permissions": [
+    "nativeMessaging",
+    "debugger",
+    "tabs",
+    "storage",
+    "alarms"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "TabBridge — tab access",
+    "default_icon": {
+      "16": "icons/16.png",
+      "32": "icons/32.png"
+    }
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'none'"
+  },
+  "minimum_chrome_version": "118",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEArV5D7lMl4VZvXscg7ZIPg8hE2b/o/eD3mmJuOiiEhAastZ5mGAbRcv23qr/yRx3XKupFC7XxCvnlG24nU+piYast9n7kH3pOM5mvUKtIGt2Vp8sjKzgIjRzaqemVKZBbMZLyzJ/Y2C+JLurWmYy1FMQx3rCjfEj6PvO7xYmxChRwVIOvLA15bw2PDGADLO7Llut5mzXlfs9U9P84jJUGZukidkz4HvDUPeLS1s3AlA8zyWR+Cxmfd0pjlyMZLhx5WwFhyAupQ9aobV6V8FYlTu4vHTETwNnCgQyOl6y3gWB8q9RKYDu+HPa8A+4wzrbj/oMyTOoHwJuhjFexxXn3HwIDAQAB",
+  "icons": {
+    "16": "icons/16.png",
+    "32": "icons/32.png",
+    "48": "icons/48.png",
+    "128": "icons/128.png"
+  }
+}
