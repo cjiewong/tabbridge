@@ -6,13 +6,18 @@
   "license": "MIT",
   "engines": { "node": ">=22" },
   "bin": { "tabbridge": "bin/tabbridge.mjs" },
-  "files": ["bin", "lib", "extension", "README.md", "LICENSE", "docs"],
+  "files": ["bin/tabbridge.mjs", "lib/*.mjs", "extension/*.js", "extension/*.json", "extension/*.css", "extension/*.html", "extension/icons/*.png", "README.md", "README.zh-CN.md", "LICENSE", "SECURITY.md", "CHANGELOG.md", "CONTRIBUTING.md", "CODE_OF_CONDUCT.md", "docs/*.md", "docs/assets/popup.png"],
   "scripts": {
     "test": "node --test test/*.test.mjs",
     "test:e2e": "node --test --test-concurrency=1 test/e2e/*.test.mjs",
     "check": "node scripts/check.mjs",
-    "pack:extension": "node scripts/package-extension.mjs"
+    "pack:extension": "node scripts/package-extension.mjs",
+    "test:package": "node scripts/smoke-package.mjs",
+    "pack:release": "node scripts/package-release.mjs"
   },
   "devDependencies": { "@modelcontextprotocol/sdk": "^1.0.0", "playwright": "^1.0.0" },
-  "repository": { "type": "git", "url": "https://github.com/cjiewong/tabbridge.git" }
+  "repository": { "type": "git", "url": "https://github.com/cjiewong/tabbridge.git" },
+  "homepage": "https://github.com/cjiewong/tabbridge#readme",
+  "bugs": { "url": "https://github.com/cjiewong/tabbridge/issues" },
+  "keywords": ["mcp", "chrome", "browser-automation", "native-messaging", "cli"]
 }

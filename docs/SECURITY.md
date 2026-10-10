@@ -28,4 +28,4 @@ Snapshots suppress password field values. Other visible content, console logs, s
 
 ## Reporting
 
-Use the repository's private vulnerability reporting when available. Otherwise open an issue describing impact without including credentials, cookies, private screenshots, page content or exploit details affecting other users. Do not post full browser profiles or unredacted logs.
+Follow the root [security policy](../SECURITY.md) and use private vulnerability reporting. If that channel is unavailable, request a confidential contact channel without posting vulnerability details. Do not post full browser profiles, credentials, cookies, private screenshots or unredacted logs.

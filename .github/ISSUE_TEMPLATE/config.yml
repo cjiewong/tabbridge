@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/cjiewong/tabbridge/security/advisories/new
+    about: Use a private report for vulnerabilities; never post credentials or exploit details in a public issue.
+  - name: Troubleshooting
+    url: https://github.com/cjiewong/tabbridge/blob/main/docs/TROUBLESHOOTING.md
+    about: Check connection, tab access and installation errors before filing a bug.

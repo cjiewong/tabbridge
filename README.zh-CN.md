@@ -4,7 +4,7 @@
 
 TabBridge 是独立实现的开源浏览器工具，包括 Chrome 扩展、本地 Native Host、CLI 和 MCP 服务。适用于 Codex CLI 等 MCP 客户端。运行时零 npm 依赖，无云端中继，不连接 ChatGPT 私有管道。
 
-[English / 完整文档](README.md) · [安全边界](docs/SECURITY.md) · [架构](docs/ARCHITECTURE.md)
+[English / 完整文档](README.md) · [安全边界](docs/SECURITY.md) · [架构](docs/ARCHITECTURE.md) · [故障排查](docs/TROUBLESHOOTING.md)
 
 ## 安装
 
@@ -16,11 +16,15 @@ cd tabbridge
 node bin/tabbridge.mjs setup
 ```
 
+运行时零 npm 依赖，使用项目无需执行 `npm install`。本地主机引用当前 checkout 和 Node 可执行文件的绝对路径；移动项目或更换 Node 后需要重新运行 `setup`。
+
 1. 打开 `chrome://extensions`，启用开发者模式。
 2. 点击“加载已解压的扩展程序”，选择项目的 `extension` 文件夹。
 3. 打开 TabBridge 扩展，点击 **Connect**。
 4. 对指定标签点击 **Share**，或打开 **All web tabs（所有网页标签）**，让 CLI/MCP 无需逐个分享即可接管全部网页标签。
 5. 执行 `node bin/tabbridge.mjs doctor` 验证连接。
+
+`setup` 仅注册 TabBridge 自己的用户级 Native Messaging 主机，不修改其他扩展。可通过 `--browser chromium`、`--browser edge` 或 `--browser testing` 选择浏览器；testing 选项对应 Chrome for Testing 146+ 的独立注册位置，其他浏览器/平台组合需按实际环境验证。`doctor` 包含本机路径，公开报错前请先脱敏。
 
 注册 Codex MCP（路径替换为 `setup` 输出中的绝对路径）：
 
@@ -77,10 +81,22 @@ npm run check
 npm test
 npx playwright install chromium
 npm run test:e2e
+npm run test:package
+npm run pack:extension
 ```
 
 真实浏览器测试使用独立、可丢弃的配置目录。已有 Chrome for Testing 可通过 `TABBRIDGE_TEST_CHROME` 指定，不会访问日常 Chrome 配置。
 
+开发打包需要 `zip`、`unzip` 和 `tar`，主机重连测试使用 `lsof`。Linux 的浏览器系统依赖可通过 `npx playwright install --with-deps chromium` 安装。`test:package` 会解压实际 npm 包，在临时目录验证 CLI、安装与卸载，不安装运行时依赖，也不连接日常浏览器。
+
+`npm run pack:release` 在 `dist/` 生成扩展 ZIP、CLI tarball 和 SHA-256 校验文件，不会发布到 npm、Chrome 商店或 GitHub Release。详见[发布流程](docs/RELEASING.md)。
+
+已加入 GitHub Actions 工作流，配置 Node.js 22/24 的 macOS/Ubuntu 检查、真实浏览器测试和发行包验证。所有 Actions 固定到提交 SHA，仓库权限只读，无需生产凭据。配置工作流不代表远端测试已经通过，实际证据见 [Actions](https://github.com/cjiewong/tabbridge/actions) 和[本地验证记录](docs/VALIDATION.md)。
+
 卸载：在扩展中停止连接，运行 `node bin/tabbridge.mjs uninstall`，再在 Chrome 扩展页移除 TabBridge。
+
+## 参与项目
+
+普通问题和功能需求通过 [Issues](https://github.com/cjiewong/tabbridge/issues) 提交；请提供可复现步骤和脱敏后的版本、错误码。贡献规范见 [CONTRIBUTING](CONTRIBUTING.md)、[行为准则](CODE_OF_CONDUCT.md)和[维护说明](docs/MAINTAINING.md)。安全漏洞请按[安全报告政策](SECURITY.md)私密提交，不要在公开 issue 中贴利用细节。社区项目不承诺支持响应时限。
 
 MIT 许可证。项目独立编写，参考公开 Chrome API、MCP 规范及开源 bridge 的架构思路，不包含 OpenAI 专有代码，与 OpenAI、Google 无隶属关系。

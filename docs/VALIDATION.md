@@ -1,11 +1,13 @@
 # Validation
 
-Validated locally on 2026-10-10 using macOS (Apple Silicon), Node.js 25.8.1 and Chrome for Testing 152.0.7977.54. Chrome runs in a disposable profile with an isolated Native Messaging registration and a local HTTP fixture. No ordinary browser profile or signed-in website was used.
+Latest local validation on 2026-10-10 used macOS (Apple Silicon), Node.js 22.23.3 and Chrome for Testing 156.0.8078.4 from the installed Playwright dependency. Node.js 25.8.1 also passed browser and packed-CLI checks. Chrome runs in a disposable profile with an isolated Native Messaging registration and a local HTTP fixture. No ordinary browser profile or signed-in website was used.
 
 ## Checks passed
 
-- JavaScript syntax and extension resource checks.
-- 6 unit/MCP compatibility tests: fragmented framing, malformed/truncated frames, request validation, independent lease/origin checks, and negotiation with the official MCP SDK.
+- JavaScript syntax, version/lockfile consistency, CLI/MCP method agreement, extension resource allowlisting and local documentation links.
+- 14 unit/MCP/distribution tests: fragmented framing, malformed/truncated frames, request validation, independent lease/origin checks, official MCP SDK negotiation, malformed tool arguments (including types, numeric bounds, prototype-named fields and nested batches), MCP lifecycle/input limits, platform registration paths, isolated setup/uninstall, repeatable archives, stale ZIP entry removal and rejection of symlinked files/directories.
+- Actual npm tarball extraction and CLI/setup/uninstall smoke check without runtime dependencies or a browser connection.
+- GitHub Actions workflow checked with actionlint 1.7.12; issue forms and Dependabot YAML parsed locally.
 - 23 real-browser checks within the E2E suite:
   1. Chrome extension → Native Messaging host handshake.
   2. Unshared tabs remain absent from agent discovery; new tabs disabled by default.
@@ -33,6 +35,6 @@ Validated locally on 2026-10-10 using macOS (Apple Silicon), Node.js 25.8.1 and 
 
 ## Scope of evidence
 
-These are local functional tests, not a claim of feature parity or a long-term availability benchmark. Windows is unsupported. Linux registration/transport code and the Ubuntu CI template are present but have not yet been validated on a Linux host. Ordinary-profile installation still requires the user to load the unpacked extension and explicitly grant access.
+These are local functional tests, not a claim of feature parity, a formal security audit or a long-term availability benchmark. Windows is unsupported. Linux path selection is unit-tested, but Linux browser/host behavior has not yet been validated on a Linux host. Ordinary-profile installation still requires the user to load the unpacked extension and explicitly select its access mode.
 
-GitHub Actions was not activated: the publishing OAuth credential does not include `workflow` scope. `ci.github-actions.yml` is the reviewed template for enabling automation with an authorized account.
+The checked-in GitHub Actions workflow defines Node.js 22/24 checks on macOS/Ubuntu, E2E jobs and release artifacts. It has been linted locally; a completed hosted run is still needed to establish Ubuntu and Node.js 24 CI evidence. Branch protection is a separate repository setting. Private vulnerability reporting was enabled and verified through the GitHub API.

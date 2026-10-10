@@ -7,3 +7,6 @@ artifacts/
 .env*
 !.env.example
 coverage/
+.tabbridge*/
+*.tgz
+*.sock

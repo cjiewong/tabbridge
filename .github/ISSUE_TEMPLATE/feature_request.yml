@@ -1,0 +1,26 @@
+name: Feature request
+description: Describe a browser workflow that TabBridge cannot support yet
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or workflow
+      description: Who needs this and what currently prevents them from completing the task?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Include expected permission boundaries and alternatives considered. Avoid private site data.
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Target platform
+      options:
+        - macOS
+        - Linux
+        - Windows (currently unsupported)
+        - Platform-independent

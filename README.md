@@ -4,7 +4,7 @@
 
 TabBridge is an independent, local browser automation toolkit for Codex CLI and other MCP clients. It connects to the Chrome profile you already use, with explicit tab grants, separate agent sessions, compact accessibility snapshots and real browser input.
 
-[简体中文](README.zh-CN.md) · [Security model](docs/SECURITY.md) · [Architecture](docs/ARCHITECTURE.md) · [Agent guide](docs/AGENT_GUIDE.md)
+[简体中文](README.zh-CN.md) · [Security model](docs/SECURITY.md) · [Architecture](docs/ARCHITECTURE.md) · [Agent guide](docs/AGENT_GUIDE.md) · [Troubleshooting](docs/TROUBLESHOOTING.md)
 
 > **Early release (0.2).** This is an independently implemented project, not an OpenAI plugin or an official compatibility layer. It does not connect to private ChatGPT pipes, copy official plugin code, or bypass their authorization checks.
 
@@ -56,7 +56,9 @@ Enable **All web tabs** in the popup. CLI/MCP then discovers all HTTP(S) tabs in
 
 Use **Block** beside a tab to exclude it; **Allow** restores eligibility. These tab-specific blocks last for that browser session/tab lifetime. Turning the global option off revokes globally acquired leases and restores individual sharing, while preserving valid manual grants and agent-owned tabs. Stop also turns the option off. All web tabs also permits closing user-owned tabs controlled by the requesting session. With the option off, only agent-created tabs can be closed. Agents should close user tabs only when requested.
 
-Setup only registers `io.github.cjiewong.tabbridge` in your user-level Chrome Native Messaging directory. It does not alter other extensions or their native hosts. You can select `--browser chromium`, `--browser edge`, or `--browser testing`; these registration paths are provided but require testing on your platform.
+Setup only registers `io.github.cjiewong.tabbridge` in your user-level Chrome Native Messaging directory. It does not alter other extensions or their native hosts. You can select `--browser chromium`, `--browser edge`, or `--browser testing`; these registration paths require testing on your platform. The testing option targets Chrome for Testing 146+ with its separate host registration location.
+
+For connection errors, session conflicts and tab access failures, see [Troubleshooting](docs/TROUBLESHOOTING.md). Keep `doctor` output private until you redact personal paths.
 
 ## Codex CLI / MCP
 
@@ -132,14 +134,23 @@ npm run check
 npm test
 npx playwright install chromium
 npm run test:e2e
+npm run test:package
 npm run pack:extension
 ```
 
-E2E tests use a disposable Chrome profile, a local fixture website and a profile-specific Native Messaging manifest. They do not read your ordinary browser profile. Set `TABBRIDGE_TEST_CHROME` to an existing Chrome for Testing executable to reuse it. Set `TABBRIDGE_TEST_HEADED=1` to watch the tests.
+E2E tests use a disposable Chrome profile, a local fixture website and a profile-specific Native Messaging manifest. They do not read your ordinary browser profile. Set `TABBRIDGE_TEST_CHROME` to an existing Chrome for Testing executable to reuse it. Set `TABBRIDGE_TEST_HEADED=1` to watch the tests. Development packaging requires `zip`, `unzip` and `tar`; E2E host restart checks use `lsof`. See [Contributing](CONTRIBUTING.md) for Linux browser dependencies.
 
-## CI template
+The package smoke check extracts an actual npm tarball and runs CLI/setup/uninstall in a temporary directory, without runtime dependencies or a live browser. `npm run pack:release` builds the extension ZIP and CLI tarball with SHA-256 files under `dist/`; it does not publish anything. See [Releasing](docs/RELEASING.md).
 
-`docs/ci.github-actions.yml` contains the GitHub Actions pipeline. Repository automation is not enabled in this initial publication because the publishing credential lacks the GitHub `workflow` scope. To enable it with an appropriately authorized account, place that file at `.github/workflows/ci.yml`. Local test results are recorded in `docs/VALIDATION.md`.
+## Continuous integration
+
+The checked-in [GitHub Actions workflow](https://github.com/cjiewong/tabbridge/blob/main/.github/workflows/ci.yml) runs checks and unit tests on Node.js 22/24 and macOS/Ubuntu, plus real-browser and packed-distribution tests. Actions are pinned to commit SHAs, run with read-only repository permissions, and need no production secrets. Release artifacts are built only after the test jobs pass; there is no automated publication.
+
+Workflow configuration is not evidence of a successful hosted run. Consult [Actions](https://github.com/cjiewong/tabbridge/actions) for hosted results and [Validation](docs/VALIDATION.md) for the locally tested environments.
+
+## Contributing and support
+
+Use [issues](https://github.com/cjiewong/tabbridge/issues) for reproducible bugs and feature requests. Read [Contributing](CONTRIBUTING.md), the [code of conduct](CODE_OF_CONDUCT.md) and [maintainer guidance](docs/MAINTAINING.md) before proposing larger changes. Vulnerabilities belong in [private security reports](SECURITY.md), not public issues with exploit details. This is a community project without a support SLA.
 
 ## Known limits
 

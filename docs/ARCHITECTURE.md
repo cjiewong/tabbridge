@@ -10,6 +10,8 @@ CLI requests and native messages use 4-byte little-endian length-prefixed JSON. 
 
 `lib/mcp.mjs` implements the small MCP surface needed here: initialize, ping, tools/list and tools/call. Compatibility is checked using the official TypeScript MCP SDK as a client. Browser screenshots return MCP image content.
 
+Tool calls are checked against the JSON Schema subset declared in `lib/tools.mjs` before contacting Chrome: required/undeclared fields, primitive types, numeric bounds, array limits and batch step structure. Only own properties count as required or declared fields. The extension remains the authority for permissions and action-specific validation.
+
 ## Ownership
 
 The extension stores tab leases in `chrome.storage.session`. A lease records tab ID, origin, session owner, whether the tab was created by an agent, and whether access came from the global option. User grants initially have no session; the first explicit claim sets ownership. With All web tabs enabled, discovery covers eligible HTTP(S) tabs and the first action auto-claims an unowned tab. The global option persists in local storage; per-tab exclusions live in session storage. Disabling it invalidates global leases while retaining valid individual grants. CLI session names are supplied by the caller. MCP defaults to a random process-specific session.

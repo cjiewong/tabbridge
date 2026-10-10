@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- Add checked-in CI for Node.js 22/24 on macOS and Ubuntu, real-browser E2E jobs, distribution smoke checks and release artifacts, with pinned actions and read-only job permissions.
+- Add security reporting, contribution/PR guidance, conduct rules, issue templates, dependency-update configuration, troubleshooting and a documented release procedure.
+- Validate MCP argument types, numeric bounds and nested batch structures before forwarding a request to Chrome; reject undeclared prototype-named arguments.
+- Correct the macOS Chrome for Testing Native Messaging registration location for Chrome 146+.
+- Build extension archives from an explicit resource list, reject symlinked files, discard stale ZIP entries and generate SHA-256 checksums.
+- Check version consistency, CLI/MCP method coverage, extension resources and local documentation links; smoke-test the extracted CLI/setup distribution without runtime dependencies.
+
 ## 0.2.1 — 2026-10-10
 
 - Allow closing user-owned tabs controlled by the requesting session when All web tabs is enabled, including tabs whose creation ownership was lost after a reload.

@@ -11,6 +11,16 @@ body:
       description: OS, Chrome, Node and TabBridge versions; CLI or MCP client.
     validations:
       required: true
+  - type: dropdown
+    id: access-mode
+    attributes:
+      label: Tab access mode
+      options:
+        - Individual tab sharing
+        - All web tabs
+        - Cannot connect / not applicable
+    validations:
+      required: true
   - type: textarea
     id: reproduction
     attributes:
