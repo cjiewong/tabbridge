@@ -196,7 +196,7 @@ $('version').textContent = version;
 $('connect').onclick = () => action({ type: 'ui.connect' });
 $('refresh').onclick = () => { actionError = null; void render(); };
 $('stop').onclick = () => action({ type: 'ui.stop' });
-for (const id of ['shared-tabs', 'all-tabs']) $(id).onchange = () => action({ type: 'ui.settings', allowAllTabs: $('all-tabs').checked });
+for (const id of ['shared-tabs', 'all-tabs']) $(id).onchange = event => action({ type: 'ui.settings', allowAllTabs: event.target.value === 'all' });
 $('new-tabs').onchange = () => action({ type: 'ui.settings', allowNewTabs: $('new-tabs').checked });
 $('developer').onchange = () => action({ type: 'ui.settings', developer: $('developer').checked });
 $('language').onchange = () => {

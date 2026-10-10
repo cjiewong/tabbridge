@@ -145,8 +145,10 @@ test('real extension + native host + CLI/MCP transport end to end', { timeout: 1
       }, url + 'window');
       const client = new Client({ name: 'e2e-activation', version: '1.0.0' });
       try {
+        await popup.waitForFunction(async ({ tabId, url }) => (await chrome.tabs.get(tabId)).url === url, { tabId: secondWindow.tabId, url: url + 'window' });
         await popup.evaluate(async tabId => {
-          await chrome.runtime.sendMessage({ type: 'ui.grant', tabId });
+          const granted = await chrome.runtime.sendMessage({ type: 'ui.grant', tabId });
+          if (!granted.ok) throw new Error(granted.error);
           const tab = await chrome.tabs.get(tabId);
           await chrome.tabs.create({ windowId: tab.windowId, url: 'about:blank', active: true });
         }, secondWindow.tabId);
@@ -324,17 +326,37 @@ test('real extension + native host + CLI/MCP transport end to end', { timeout: 1
       await popup.getByRole('radio', { name: 'All web tabs', exact: true }).check();
       const fresh = await call('snapshot', { tabId });
       const unblockText = 'Queue released after revocation';
-      const blockerDone = call('wait', { tabId, text: unblockText, timeoutMs: 12000 }).catch(e => e);
-      await new Promise(r => setTimeout(r, 100));
-      const queuedResult = call('click', { tabId, ref: refFor(fresh, 'button', 'Save') }).catch(e => e);
-      // The queue is held until revocation cancels its active action.
-      const changed = await popup.evaluate(() => chrome.runtime.sendMessage({ type: 'ui.settings', allowAllTabs: false }));
-      assert.equal(changed.ok, true);
-      assert.equal((await blockerDone).code, 'CANCELLED');
-      const refused = await queuedResult;
-      assert.equal(refused.code, 'TAB_NOT_GRANTED');
-      assert.equal(await userPage.evaluate(() => window.saves || 0), 0);
-      await popup.getByRole('button', { name: 'Refresh', exact: true }).click();
+      await worker.evaluate(text => {
+        const original = chrome.debugger.sendCommand.bind(chrome.debugger);
+        globalThis.waitProbeStarted = false;
+        globalThis.restoreWaitProbe = () => { chrome.debugger.sendCommand = original; };
+        chrome.debugger.sendCommand = (...args) => {
+          if (args[1] === 'Runtime.evaluate' && args[2]?.expression?.includes(text)) globalThis.waitProbeStarted = true;
+          return original(...args);
+        };
+      }, unblockText);
+      try {
+        const blockerDone = call('wait', { tabId, text: unblockText, timeoutMs: 12000 }).catch(e => e);
+        // Wait for a real text probe, rather than assuming a fixed sleep means
+        // the request has reached its active action scope on a loaded runner.
+        await worker.evaluate(() => new Promise((resolve, reject) => {
+          const end = Date.now() + 5000;
+          const poll = () => {
+            if (globalThis.waitProbeStarted) resolve();
+            else if (Date.now() >= end) reject(new Error('The wait did not begin its text probe'));
+            else setTimeout(poll, 20);
+          };
+          poll();
+        }));
+        const queuedResult = call('click', { tabId, ref: refFor(fresh, 'button', 'Save') }).catch(e => e);
+        // The queue is held until revocation cancels its active action.
+        const changed = await popup.evaluate(() => chrome.runtime.sendMessage({ type: 'ui.settings', allowAllTabs: false }));
+        assert.equal(changed.ok, true);
+        assert.equal((await blockerDone).code, 'CANCELLED');
+        assert.equal((await queuedResult).code, 'TAB_NOT_GRANTED');
+        assert.equal(await userPage.evaluate(() => window.saves || 0), 0);
+        await popup.getByRole('button', { name: 'Refresh', exact: true }).click();
+      } finally { await worker.evaluate(() => globalThis.restoreWaitProbe()); }
     });
     await t.test('agent-created tabs are isolated and can be closed', async () => {
       await popup.getByRole('checkbox', { name: /Agent-created tabs/ }).check();

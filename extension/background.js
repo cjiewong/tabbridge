@@ -34,9 +34,12 @@ async function waitForWebTab(tabId, session, end, control) {
     if (!settings.enabled) fail('STOPPED', 'TabBridge was stopped');
     if (blockedTabs[tabId]) fail('TAB_BLOCKED', 'This tab is blocked in the TabBridge popup');
     const tab = await chrome.tabs.get(tabId);
+    const lease = leases[tabId];
+    if (!lease && !allAccess(tabId)) fail('TAB_NOT_GRANTED', 'Share this tab from the TabBridge popup first');
+    if (lease && lease.session !== session) fail('SESSION_CONFLICT', lease.session ? 'This tab belongs to another session' : 'Claim the shared tab first');
+    if (lease?.grant === 'all' && !allAccess(tabId)) fail('TAB_NOT_GRANTED', 'All-web-tabs access was disabled');
     const committed = isWebTab(tab);
     if (committed && !tab.pendingUrl) return tab;
-    const lease = leases[tabId];
     if (committed && (lease?.session || !allAccess(tabId))) checkLease(tabId, session, tab.url);
     const pending = committed ? webURL(tab.pendingUrl) : pendingWebURL(tab, lease, session, { allowAllTabs: allAccess(tabId) });
     if (!pending) { checkLease(tabId, session, tab.url); webURL(tab.url); }

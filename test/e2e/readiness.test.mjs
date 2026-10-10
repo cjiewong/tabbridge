@@ -165,6 +165,7 @@ test('initial navigation and DOM readiness are bounded and preserve authorizatio
       await new Promise(resolve => setTimeout(resolve, 100));
       await popup.getByRole('radio', { name: 'Individual tabs', exact: true }).check();
       await popup.waitForFunction(() => !document.getElementById('all-tabs').disabled);
+      assert.equal((await call('status')).allowAllTabs, false);
       assert.equal((await waiting).code, 'TAB_NOT_GRANTED');
       await popup.evaluate(tabId => chrome.tabs.remove(tabId), pending.id);
     });
@@ -190,6 +191,7 @@ test('initial navigation and DOM readiness are bounded and preserve authorizatio
       await popup.evaluate(tabId => chrome.tabs.remove(tabId), own.tabId);
     });
     await t.test('the initial blank exception expires on commit and never authorizes ordinary blank tabs', async () => {
+      assert.equal((await call('status')).allowAllTabs, false);
       const own = await call('open', { url: base + '/committed' });
       // No TabBridge read may be needed to expire the initial exception; it
       // must also be removed from session storage before a worker restart.

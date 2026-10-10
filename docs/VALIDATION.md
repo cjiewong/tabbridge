@@ -29,7 +29,7 @@ Latest local validation on 2026-10-10 used macOS (Apple Silicon), Node.js 25.8.1
   18. Per-tab Block overrides global access until Allow is selected.
   19. Disabling global access revokes global leases and restores manual sharing.
   20. Valid individual grants survive toggling the global option.
-  21. Revoking global access prevents queued actions from executing.
+  21. Revoking global access cancels a wait after a real text probe has started and prevents queued actions from executing, without assuming a fixed sleep proves startup.
   22. Global opt-in survives a full Chrome restart and authorizes fresh tabs.
   23. Global mode closes an existing user tab without Share/claim; blocked, foreign-session and individual-mode close requests remain rejected.
   24. Authorized activation reveals a dialog/table which remains blank while the real page is hidden/unfocused; the fixture is tested without Playwright focus emulation. It reports complete DOM readiness while background app content is absent, gives a useful text-wait failure, and an actual MCP SDK activation with waitForText waits for a delayed foreground render exactly once.

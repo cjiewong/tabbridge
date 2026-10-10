@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Recheck cancellation across asynchronous tab lookups, report active access loss as cancellation before detach completes, and derive access-mode changes from the selected radio value.
+
 - Wait for initial/pending HTTP(S) navigation and DOMContentLoaded before snapshots, text reads, screenshots and text waits, using one bounded budget; preserve grants, cancellation and ownership while waiting.
 - Report document loading/visibility/focus and background rendering guidance, and optionally wait for expected content after explicit activation. Keep writes free of automatic replay.
 - Expire and persist the removal of initial blank-tab waiting markers on commit, and permit cleanup of the session’s own still-loading initial tab.

@@ -39,9 +39,27 @@ function checkScope(scope) {
   if (scope && (!scope.active || scope.control?.cancelled)) fail('CANCELLED', 'Tab access, debugging or the client ended during this action; inspect before continuing');
   if (scope?.deadline && Date.now() >= scope.deadline) fail('EXPIRED', 'Request expired; no further browser command was dispatched');
 }
+function authorizeDocument(scope, url) {
+  checkScope(scope);
+  try { scope?.authorize?.(url); }
+  catch (error) {
+    // Access can end before an asynchronous detach completes. An active
+    // action is cancelled; a later request still receives its normal denial.
+    if (['TAB_NOT_GRANTED', 'TAB_BLOCKED', 'SESSION_CONFLICT', 'ORIGIN_CHANGED', 'STOPPED', 'INVALID_URL'].includes(error.code)) {
+      scope.active = false;
+      fail('CANCELLED', 'Tab access or origin changed during this action; no further command was dispatched. Inspect before continuing');
+    }
+    throw error;
+  }
+  checkScope(scope);
+}
 async function authorizeCommand(tabId, scope) {
   checkScope(scope);
-  if (scope?.authorize) scope.authorize((await chrome.tabs.get(tabId)).url);
+  if (scope?.authorize) {
+    const tab = await chrome.tabs.get(tabId);
+    checkScope(scope);
+    authorizeDocument(scope, tab.url);
+  }
   checkScope(scope);
 }
 export async function cdp(tabId, method, params = {}) {
@@ -80,7 +98,8 @@ async function waitForDocument(tabId, scope) {
   for (;;) {
     checkScope(scope);
     const tab = await chrome.tabs.get(tabId);
-    scope.authorize?.(tab.url);
+    checkScope(scope);
+    authorizeDocument(scope, tab.url);
     if (tab.discarded || tab.frozen) fail('FOREGROUND_REQUIRED', 'This tab is discarded or frozen. Explicitly activate the authorized tab, then wait for the expected content');
     let state;
     try {
@@ -93,7 +112,7 @@ async function waitForDocument(tabId, scope) {
     }
     if (state?.documentURL && state.documentURL !== 'about:blank') {
       if (state.documentURL.startsWith('chrome-error:')) fail('NAVIGATION_FAILED', 'Chrome could not load this page. Inspect the navigation or network failure before retrying');
-      scope.authorize?.(state.documentURL);
+      authorizeDocument(scope, state.documentURL);
       if (state.domContentLoaded) return pageState(tab, state);
     }
     if (Date.now() >= scope.observationDeadline) fail('READINESS_TIMEOUT', 'DOMContentLoaded did not finish in time. Retry only the read, or explicitly activate a background tab if the task needs foreground rendering');
@@ -108,7 +127,10 @@ async function objectFor(tabId, ref) {
     const result = await cdp(tabId, 'DOM.resolveNode', { backendNodeId: record.backendNodeId });
     if (!result.object?.objectId) fail('STALE_REF', 'Element no longer exists');
     return result.object.objectId;
-  } catch { fail('STALE_REF', 'Element no longer exists. Get a new snapshot'); }
+  } catch (error) {
+    if (['CANCELLED', 'EXPIRED'].includes(error.code)) throw error;
+    fail('STALE_REF', 'Element no longer exists. Get a new snapshot');
+  }
 }
 async function elementCall(tabId, ref, fn, args = []) {
   const objectId = await objectFor(tabId, ref);
@@ -342,7 +364,7 @@ async function performAction(method, tabId, params, settings) {
       do {
         const result = await cdp(tabId, 'Runtime.evaluate', { expression: `({...${pageStateExpression}, found: Boolean(document.body && document.body.innerText.includes(${JSON.stringify(params.text)}))})`, returnByValue: true });
         const state = result.result?.value;
-        if (state?.documentURL) scope.authorize?.(state.documentURL);
+        if (state?.documentURL) authorizeDocument(scope, state.documentURL);
         if (state?.found) return { found: true, ...pageState(await chrome.tabs.get(tabId), state) };
         if (Date.now() >= scope.observationDeadline) break;
         await new Promise(r => setTimeout(r, Math.min(100, scope.observationDeadline - Date.now())));
