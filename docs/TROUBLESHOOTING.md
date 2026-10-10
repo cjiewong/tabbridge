@@ -14,9 +14,12 @@ Start with `node bin/tabbridge.mjs doctor` from the checkout. A successful hands
 | `ORIGIN_CHANGED` | An individually shared tab changed origin. Share it again. All web tabs allows cross-origin navigation only while enabled. |
 | `USER_TAB` | Individual mode refuses to close user tabs. Keep/release the tab, close it manually, or explicitly enable All web tabs before a user-requested closure. |
 | `NEW_TABS_DISABLED`, `DEVELOPER_DISABLED` | Enable the specific capability in the popup only when the task needs it. |
+| `PAGE_LOADING` after opening a tab | The requested HTTP(S) URL has not committed within the read budget. Retry only the read when appropriate, or inspect/close the owned loading tab; do not reopen or replay a write. Arbitrary `about:blank` and protected pages stay unsupported. |
+| `READINESS_TIMEOUT` | `DOMContentLoaded` did not finish within the shared navigation/DOM/text budget. Inspect loading/network state and retry only the observation if appropriate. |
+| `FOREGROUND_REQUIRED` | Chrome reports the tab as discarded or frozen. Explicitly activate the exact authorized tab if the task needs it, then wait for expected content. |
 | `STALE_REF` | Read a fresh snapshot and use its current element references. References expire after another snapshot or navigation. |
 | `TIMEOUT`, `DISCONNECTED`, partial batch | Inspect the page and completed batch results before another action. A lost response is not proof that a write failed. Never replay the whole batch automatically. |
-| Blank modal overlay or a control awaiting foreground focus | For the exact authorized tab, run `activate TAB --session NAME` or MCP `browser_activate`, then read a fresh snapshot. Inspect `active` and `windowFocused` and wait for the site's dialog content. Do not repeat a click, reload the page or change disabled attributes to force progress. Activation is not a guarantee that every site bug will recover. |
+| Blank modal overlay or a control awaiting foreground focus | For the exact authorized tab, run `activate TAB --session NAME` or MCP `browser_activate`, optionally with `waitForText`/`timeoutMs`, then read a fresh snapshot. Inspect tab/window and document visibility/focus; wait for the actual dialog/table content. Do not repeat a click, reload the page or change disabled attributes to force progress. Activation is not a guarantee that every site bug will recover. |
 | Popup settings appear before the tab list | The two load independently. Connection/capability controls become available when their authoritative state arrives; a slow tab scan keeps its own loading indicator. Use Refresh if the list fails. |
 | Debugger attach fails | Close competing DevTools/debugger attachments to that tab if appropriate. Chrome internal pages and security dialogs remain unsupported. |
 
@@ -33,7 +36,7 @@ Keep the directory private and outside public commits. Add `TABBRIDGE_HOME` to t
 
 ## Updating the extension and MCP tools
 
-After updating the checkout, reload TabBridge in `chrome://extensions` and start a new MCP client session to refresh its tool list. A previously running client may keep the old tool schemas. The CLI can call `activate` from the updated checkout once the extension has been reloaded. Reloading can affect grants and session state; inspect status and tab access before continuing an interrupted task.
+After updating the checkout, reload TabBridge in `chrome://extensions` and start a new MCP client session to refresh its tool list. A previously running client may keep the old tool schemas. The CLI can call `activate` with an optional `waitForText` JSON argument from the updated checkout once the extension has been reloaded. Reloading can affect grants and session state; inspect status and tab access before continuing an interrupted task.
 
 ## Tests
 

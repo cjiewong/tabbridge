@@ -73,12 +73,25 @@ node bin/tabbridge.mjs release 123 --session demo
 
 开启 All web tabs 后，Agent 可以按你的指令关闭当前会话接管的用户标签；关闭该选项时，只能关闭 Agent 自己创建的标签。日常清理仍应保留用户原有标签。逐个分享模式下，用户标签跨域后自动撤销授权，Chrome 重启后需要重新分享。所有网页模式下无需重新分享。超时意味着结果可能未知，不能盲目重复提交。
 
-## 前台弹窗与人工接手
+## 导航与页面就绪
 
-MCP 工具 `browser_activate`（CLI：`activate TAB`）会选中目标标签并将其所在 Chrome 窗口切到前台，最小化时恢复窗口。它遵守现有标签授权、Block 和会话隔离，无需启用 JavaScript 求值。快照包含 `active` 和 `windowFocused`，分别表示标签是否在窗口中被选中、窗口是否获得焦点。
+`open` 会立即返回标签 ID 和 `loading`，不表示页面已经加载完成。`snapshot`、`read`、`screenshot` 和 `wait` 会等待进行中的 HTTP(S) 导航提交，以及 `DOMContentLoaded` 结束。可选 `timeoutMs` 默认 8,000，范围为 0–12,000；URL 提交、DOM 就绪和文字等待共用同一预算，也受请求截止时间限制。Agent 新建标签暂时出现的 `about:blank`／空 URL 仅可用于等待，不能据此读取任意空白或受保护页面。写操作不会自动重试。
+
+快照和正文读取包含 `loading`、`readyState`、`domContentLoaded`、`visibilityState`、`documentFocused`、`discarded`、`frozen`，并提示后台页面可能延迟渲染。`readyState: "complete"` 只表示文档状态，不代表应用的表格或数据已显示。验收结果时，用 `browser_wait` 等待具体内容。被冻结或丢弃的标签会返回 `FOREGROUND_REQUIRED`，避免用空内容误报成功。
 
 ```sh
-node bin/tabbridge.mjs activate 123 --session demo
+node bin/tabbridge.mjs snapshot 123 --json '{"timeoutMs":8000}' --session demo
+node bin/tabbridge.mjs wait 123 "预期表格标题" --json '{"timeoutMs":8000}' --session demo
+```
+
+`PAGE_LOADING` 或 `READINESS_TIMEOUT` 表示有限等待内未能完成观察。适当检查状态并重试读取，不应因此重复新建标签、刷新页面或重放上一次写操作。成功读取也是一个时点的结果，应用仍可能继续渲染。
+
+## 前台弹窗与人工接手
+
+MCP 工具 `browser_activate`（CLI：`activate TAB`）会选中目标标签并将其所在 Chrome 窗口切到前台，最小化时恢复窗口。它遵守现有标签授权、Block 和会话隔离，无需启用 JavaScript 求值。快照同时报告标签选中、窗口焦点和文档可见性／焦点。激活时可传 `waitForText` 和 `timeoutMs`，等待目标内容出现后再返回；等待失败也不代表前台切换没有发生。
+
+```sh
+node bin/tabbridge.mjs activate 123 --json '{"waitForText":"预期表格标题","timeoutMs":8000}' --session demo
 node bin/tabbridge.mjs snapshot 123 --session demo
 ```
 

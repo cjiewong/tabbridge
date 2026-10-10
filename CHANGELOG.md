@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Wait for initial/pending HTTP(S) navigation and DOMContentLoaded before snapshots, text reads, screenshots and text waits, using one bounded budget; preserve grants, cancellation and ownership while waiting.
+- Report document loading/visibility/focus and background rendering guidance, and optionally wait for expected content after explicit activation. Keep writes free of automatic replay.
+- Expire and persist the removal of initial blank-tab waiting markers on commit, and permit cleanup of the session’s own still-loading initial tab.
+
 - Redesign the popup (at most 600px) with Chinese/English language preferences, manifest-derived version, explicit access modes, folded scripting controls, title/domain search, session/block filters, current-tab ordering and a fixed Stop & revoke all footer.
 - Fit the fixed footer to Chrome’s actual popup viewport, including short windows, with a regression that opens the native toolbar popup.
 - Retry transient disposable-profile cleanup races after stopping the foreground test browser.

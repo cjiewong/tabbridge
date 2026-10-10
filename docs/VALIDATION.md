@@ -5,10 +5,10 @@ Latest local validation on 2026-10-10 used macOS (Apple Silicon), Node.js 25.8.1
 ## Checks passed
 
 - JavaScript syntax, version/lockfile consistency, CLI/MCP method agreement, extension resource allowlisting and local documentation links.
-- 14 unit/MCP/distribution tests: fragmented framing, malformed/truncated frames, request validation, independent lease/origin checks, official MCP SDK negotiation, malformed tool arguments (including types, numeric bounds, prototype-named fields and nested batches), MCP lifecycle/input limits, platform registration paths, isolated setup/uninstall, repeatable archives, stale ZIP entry removal and rejection of symlinked files/directories.
+- 15 unit/MCP/distribution tests: fragmented framing, malformed/truncated frames, request validation, independent lease/origin checks, official MCP SDK negotiation, malformed tool arguments (including types, numeric bounds, prototype-named fields and nested batches), MCP lifecycle/input limits, platform registration paths, isolated setup/uninstall, repeatable archives, stale ZIP entry removal and rejection of symlinked files/directories.
 - Actual npm tarball extraction and CLI/setup/uninstall smoke check without runtime dependencies or a browser connection.
 - GitHub Actions workflow checked with actionlint 1.7.12; issue forms and Dependabot YAML parsed locally.
-- 44 real-browser checks within the E2E suite (47 Node test results including the three parent suites):
+- 51 real-browser checks within the E2E suite (55 Node test results including the four parent suites):
   1. Chrome extension → Native Messaging host handshake.
   2. Unshared tabs remain absent from agent discovery; new tabs disabled by default.
   3. Explicit claim, session isolation, user-tab close refusal and origin scope.
@@ -32,7 +32,7 @@ Latest local validation on 2026-10-10 used macOS (Apple Silicon), Node.js 25.8.1
   21. Revoking global access prevents queued actions from executing.
   22. Global opt-in survives a full Chrome restart and authorizes fresh tabs.
   23. Global mode closes an existing user tab without Share/claim; blocked, foreign-session and individual-mode close requests remain rejected.
-  24. Authorized activation reveals a dialog which is blank while its real page is hidden/unfocused; the fixture is tested without Playwright focus emulation.
+  24. Authorized activation reveals a dialog/table which remains blank while the real page is hidden/unfocused; the fixture is tested without Playwright focus emulation. It reports complete DOM readiness while background app content is absent, gives a useful text-wait failure, and an actual MCP SDK activation with waitForText waits for a delayed foreground render exactly once.
   25. MCP activation selects the target in another window, restores a minimized window and focuses it; CLI activation and ungranted/blocked/foreign-session/protected-tab refusal are also checked.
   26. Popup status/settings remain available while the web-tab list reply is deliberately held.
   27. A delayed obsolete popup reply cannot replace a newer tab list.
@@ -53,6 +53,13 @@ Latest local validation on 2026-10-10 used macOS (Apple Silicon), Node.js 25.8.1
   42. Injected UI write failures roll back controls to authoritative backend state without replay and keep Stop available.
   43. Individual-mode and Chinese Stop controls revoke actual backend access, clear flags and show the resulting states.
   44. Chrome’s actual toolbar action popup (not a normal page showing popup.html) fits its available viewport and keeps Stop inside it; a screenshot is captured from its own disposable browser target.
+  45. Snapshot, read, screenshot and text wait start while real new tabs have uncommitted blank/empty URLs; they await HTTP commit without activation, reload or duplicate requests, and refuse foreign sessions.
+  46. A real deferred-script response holds DOMContentLoaded after the URL has committed; reads await its completion. A fixture completing after the original budget detects incorrectly renewed per-stage timeouts.
+  47. A follow-up navigation is held while the old HTTP page remains committed; a snapshot waits for the destination rather than returning old content.
+  48. Unshared pending tabs remain unavailable without the global option; global opt-in allows awaiting commit, while disabling it during the wait aborts access and session isolation still holds.
+  49. Initial navigation timeout reports PAGE_LOADING and the session can close its still-loading owned tab.
+  50. Revocation during an initial blank wait aborts observation and never restores the grant.
+  51. Initial waiting permission is cleared in memory and session storage on HTTP commit, without requiring an agent read; later about:blank navigation revokes access and ordinary blank tabs remain unsupported.
 
 The foreground fixture launches its own disposable Chrome process and attaches the test driver to an ephemeral loopback debugging endpoint with `noDefaults: true`. This avoids synthetic focus/visibility overrides and does not disable Chrome's sandbox. Production TabBridge transport remains Native Messaging and a private Unix socket; it does not expose a debugging port.
 
@@ -62,6 +69,6 @@ The E2E browser fixtures enable Chrome's sandbox. Ubuntu CI configures the match
 
 These are functional tests, not a claim of feature parity, a formal security audit or a long-term availability benchmark. Windows is unsupported. Ordinary-profile installation still requires the user to load the unpacked extension and explicitly select its access mode.
 
-Hosted [CI run for 1fdc813](https://github.com/cjiewong/tabbridge/actions/runs/38026013568) passed on 2026-10-10: Node.js 22/24 unit/package checks on macOS and Ubuntu, real-browser suites on both operating systems, and release artifact generation. That commit includes expanded capabilities, sandbox configuration and the in-flight attachment/revocation regression. The popup redesign above was verified locally; consult [Actions](https://github.com/cjiewong/tabbridge/actions) for the corresponding newer commit's result rather than treating the earlier run as evidence for untested later changes.
+Hosted [CI run for a688418](https://github.com/cjiewong/tabbridge/actions/runs/38031999423) passed on 2026-10-10: Node.js 22/24 unit/package checks on macOS and Ubuntu, real-browser suites on both operating systems, and release artifact generation. That commit includes expanded capabilities, popup layout and sandbox configuration. The navigation/readiness regressions above were verified locally; consult [Actions](https://github.com/cjiewong/tabbridge/actions) for the corresponding newer commit's result rather than treating the earlier run as evidence for untested later changes.
 
 Branch protection is a separate repository setting. Private vulnerability reporting was enabled and verified through the GitHub API.

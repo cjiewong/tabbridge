@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { frame, FrameDecoder, validateRequest } from '../lib/protocol.mjs';
-import { requireLease, webURL } from '../extension/policy.js';
+import { requireLease, webURL, pendingWebURL } from '../extension/policy.js';
 
 test('framing survives bytewise fragmentation and multiple messages', async () => {
   const decoder = new FrameDecoder(); const messages = [];
@@ -35,4 +35,20 @@ test('all-tab grants require the active option and still enforce ownership and w
   assert.equal(requireLease(lease, 'alpha', 'https://other.example', { allowAllTabs: true }).hostname, 'other.example');
   assert.throws(() => requireLease(lease, 'beta', 'https://other.example', { allowAllTabs: true }), { code: 'SESSION_CONFLICT' });
   assert.throws(() => requireLease(lease, 'alpha', 'chrome://settings', { allowAllTabs: true }), { code: 'INVALID_URL' });
+});
+
+test('waiting for an initial URL requires ownership or a pending global web navigation', () => {
+  const lease = { session: 'alpha', owned: true, openingUrl: 'https://example.com/', origin: 'https://example.com' };
+  const blank = { url: 'about:blank', pendingUrl: 'https://example.com/', status: 'loading' };
+  assert.equal(pendingWebURL(blank, lease, 'alpha').href, 'https://example.com/');
+  assert.throws(() => pendingWebURL(blank, lease, 'beta'), { code: 'SESSION_CONFLICT' });
+  assert.equal(pendingWebURL(blank, null, 'alpha'), null);
+  assert.equal(pendingWebURL(blank, { ...lease, owned: false }, 'alpha'), null);
+  assert.equal(pendingWebURL({ url: 'about:blank' }, null, 'alpha', { allowAllTabs: true }), null);
+  assert.equal(pendingWebURL(blank, null, 'alpha', { allowAllTabs: true }).href, 'https://example.com/');
+  assert.equal(pendingWebURL({ ...blank, url: 'chrome://settings' }, lease, 'alpha'), null);
+  assert.equal(pendingWebURL({ url: 'about:blank' }, { ...lease, openingUrl: undefined }, 'alpha'), null);
+  for (const pendingUrl of ['file:///private/fixture', 'chrome://settings', 'https://user:pass@example.com']) {
+    assert.throws(() => pendingWebURL({ ...blank, pendingUrl }, lease, 'alpha'), { code: 'INVALID_URL' });
+  }
 });

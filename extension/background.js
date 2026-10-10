@@ -1,4 +1,4 @@
-import { fail, webURL, requireTabId, requireLease, validSession } from './policy.js';
+import { fail, webURL, requireTabId, requireLease, validSession, pendingWebURL } from './policy.js';
 import { detach, invalidate, runAction } from './browser.js';
 
 const HOST = 'io.github.cjiewong.tabbridge';
@@ -22,6 +22,27 @@ function isWebTab(tab) { try { webURL(tab.url); return true; } catch { return fa
 function checkLease(tabId, session, url) {
   if (blockedTabs[tabId]) fail('TAB_BLOCKED', 'This tab is blocked in the TabBridge popup');
   return requireLease(leases[tabId], session, url, { allowAllTabs: allAccess(tabId) });
+}
+function observationDeadline(params, deadline) {
+  const timeout = params.timeoutMs ?? 8000;
+  if (!Number.isInteger(timeout) || timeout < 0 || timeout > 12000) fail('INVALID_PARAMS', 'timeoutMs must be 0–12000');
+  return Math.min(deadline, Date.now() + timeout);
+}
+async function waitForWebTab(tabId, session, end, control) {
+  for (;;) {
+    if (control.cancelled) fail('CANCELLED', 'Client disconnected while waiting for navigation');
+    if (!settings.enabled) fail('STOPPED', 'TabBridge was stopped');
+    if (blockedTabs[tabId]) fail('TAB_BLOCKED', 'This tab is blocked in the TabBridge popup');
+    const tab = await chrome.tabs.get(tabId);
+    const committed = isWebTab(tab);
+    if (committed && !tab.pendingUrl) return tab;
+    const lease = leases[tabId];
+    if (committed && (lease?.session || !allAccess(tabId))) checkLease(tabId, session, tab.url);
+    const pending = committed ? webURL(tab.pendingUrl) : pendingWebURL(tab, lease, session, { allowAllTabs: allAccess(tabId) });
+    if (!pending) { checkLease(tabId, session, tab.url); webURL(tab.url); }
+    if (Date.now() >= end) fail('PAGE_LOADING', 'The HTTP(S) navigation has not committed yet. Inspect or retry this read; do not reopen the tab or replay a write');
+    await new Promise(resolve => setTimeout(resolve, Math.min(50, end - Date.now())));
+  }
 }
 function updateBadge() {
   chrome.action.setBadgeText({ text: connected ? settings.allowAllTabs ? 'ALL' : String(Object.keys(leases).length || '') : settings.enabled ? '!' : '' });
@@ -77,10 +98,13 @@ async function dispatch(method, params, session, deadline, control) {
     const candidates = settings.allowAllTabs ? await chrome.tabs.query({}) : (await Promise.all(Object.keys(leases).map(id => chrome.tabs.get(Number(id)).catch(() => null)))).filter(Boolean);
     for (const tab of candidates) {
       const lease = leases[tab.id];
-      if (!isWebTab(tab) || blockedTabs[tab.id] || (lease?.session && lease.session !== session)) continue;
+      if (blockedTabs[tab.id] || (lease?.session && lease.session !== session)) continue;
+      let pending;
+      try { pending = !isWebTab(tab) && lease?.owned && lease.openingUrl ? pendingWebURL(tab, lease, session) : null; } catch { continue; }
+      if (!isWebTab(tab) && !pending) continue;
       if (lease?.grant === 'all' && !allAccess(tab.id)) continue;
       if (!lease && !allAccess(tab.id)) continue;
-      result.push({ tabId: tab.id, title: tab.title, url: tab.url, active: tab.active, owned: !!lease?.owned, claimed: !!lease?.session, access: lease?.owned ? 'created' : allAccess(tab.id) ? 'all' : 'shared' });
+      result.push({ tabId: tab.id, title: tab.title, url: pending?.href || tab.url, committed: !pending, loading: !!pending || tab.status === 'loading', discarded: !!tab.discarded, frozen: !!tab.frozen, active: tab.active, owned: !!lease?.owned, claimed: !!lease?.session, access: lease?.owned ? 'created' : allAccess(tab.id) ? 'all' : 'shared' });
     }
     return { tabs: result };
   }
@@ -88,11 +112,17 @@ async function dispatch(method, params, session, deadline, control) {
     if (!settings.allowNewTabs) fail('NEW_TABS_DISABLED', 'Enable agent-created tabs in the TabBridge popup');
     const url = webURL(params.url).href;
     const tab = await chrome.tabs.create({ url, active: false });
-    leases[tab.id] = { owned: true, session, origin: new URL(url).origin }; await saveLeases();
-    return { tabId: tab.id, url, owned: true };
+    leases[tab.id] = { owned: true, session, origin: new URL(url).origin, ...(!isWebTab(tab) ? { openingUrl: url } : {}) }; await saveLeases();
+    return { tabId: tab.id, url, owned: true, loading: !isWebTab(tab) || tab.status === 'loading' };
   }
-  const tabId = requireTabId(params.tabId); const tab = await chrome.tabs.get(tabId); let lease = leases[tabId];
+  const tabId = requireTabId(params.tabId);
+  const observing = ['snapshot', 'read', 'screenshot', 'wait'].includes(method);
+  const end = observing || (method === 'activate' && params.waitForText !== undefined) ? observationDeadline(params, deadline) : undefined;
+  if (method === 'activate' && params.waitForText !== undefined && (typeof params.waitForText !== 'string' || params.waitForText.length > 1000)) fail('INVALID_PARAMS', 'waitForText must be text up to 1000 characters');
+  const tab = observing || end !== undefined ? await waitForWebTab(tabId, session, end, control) : await chrome.tabs.get(tabId); let lease = leases[tabId];
   if (blockedTabs[tabId]) fail('TAB_BLOCKED', 'This tab is blocked in the TabBridge popup');
+  if (isWebTab(tab) && lease?.openingUrl) { delete lease.openingUrl; await saveLeases(); }
+  const initialCleanup = ['release', 'close'].includes(method) && lease?.owned && pendingWebURL(tab, lease, session);
   if (allAccess(tabId) && (!lease || !lease.session)) {
     const origin = webURL(tab.url).origin;
     lease = lease || { owned: false, origin, grant: 'all' };
@@ -104,7 +134,8 @@ async function dispatch(method, params, session, deadline, control) {
     if (!lease.owned && !allAccess(tabId) && webURL(tab.url).origin !== lease.origin) fail('ORIGIN_CHANGED', 'Share this tab again after its origin changed');
     lease.session = session; await saveLeases(); checkLease(tabId, session, tab.url); return { tabId, title: tab.title, url: tab.url };
   }
-  checkLease(tabId, session, tab.url);
+  checkLease(tabId, session, initialCleanup?.href || tab.url);
+  const context = { deadline, control, observationDeadline: end, authorize: url => { if (!settings.enabled) fail('STOPPED', 'TabBridge was stopped'); return checkLease(tabId, session, url); } };
   if (method === 'activate') {
     const window = await chrome.windows.get(tab.windowId);
     if (!settings.enabled) fail('STOPPED', 'TabBridge was stopped');
@@ -114,7 +145,12 @@ async function dispatch(method, params, session, deadline, control) {
     checkLease(tabId, session, (await chrome.tabs.get(tabId)).url);
     await chrome.windows.update(tab.windowId, { focused: true, ...(window.state === 'minimized' ? { state: 'normal' } : {}) });
     const [currentTab, currentWindow] = await Promise.all([chrome.tabs.get(tabId), chrome.windows.get(tab.windowId)]);
-    return { tabId, windowId: currentTab.windowId, active: currentTab.active, windowFocused: currentWindow.focused, windowState: currentWindow.state };
+    const result = { tabId, windowId: currentTab.windowId, active: currentTab.active, windowFocused: currentWindow.focused, windowState: currentWindow.state };
+    if (params.waitForText !== undefined) {
+      await waitForWebTab(tabId, session, end, control);
+      result.wait = await runAction('wait', tabId, { text: params.waitForText, timeoutMs: params.timeoutMs }, settings, context);
+    }
+    return result;
   }
   if (method === 'release') {
     await detach(tabId);
@@ -137,16 +173,16 @@ async function dispatch(method, params, session, deadline, control) {
       try {
         if (!settings.enabled) fail('STOPPED', 'TabBridge was stopped');
         checkLease(tabId, session, (await chrome.tabs.get(tabId)).url);
-        results.push(await runAction(step.method, tabId, step.params, settings));
+        results.push(await runAction(step.method, tabId, step.params, settings, { ...context, observationDeadline: undefined }));
       }
       catch (e) { return { completed: results.length, results, failed: { code: e.code || 'BROWSER_ERROR', message: e.message }, outcome: 'partial; do not replay completed steps' }; }
     }
     if (!settings.enabled) fail('STOPPED', 'TabBridge was stopped');
     checkLease(tabId, session, (await chrome.tabs.get(tabId)).url);
-    return { completed: results.length, results, snapshot: await runAction('snapshot', tabId, {}, settings) };
+    return { completed: results.length, results, snapshot: await runAction('snapshot', tabId, {}, settings, context) };
   }
   if (method === 'navigate' && !lease.owned && !allAccess(tabId) && webURL(params.url).origin !== lease.origin) fail('ORIGIN_CHANGED', 'Shared tabs may only navigate within the granted origin. Create a new tab instead');
-  return runAction(method, tabId, params, settings);
+  return runAction(method, tabId, params, settings, context);
 }
 
 chrome.tabs.onActivated.addListener(notifyUI);
@@ -159,8 +195,17 @@ chrome.tabs.onUpdated.addListener(async (tabId, change) => {
   if (!change.url) return;
   invalidate(tabId); const lease = leases[tabId];
   if (!lease) return;
+  let clearedOpening = false;
+  if (lease.openingUrl) {
+    const tab = await chrome.tabs.get(tabId).catch(() => null);
+    if (!tab) return;
+    try { if (pendingWebURL(tab, lease, lease.session)) return; } catch {}
+    delete lease.openingUrl;
+    clearedOpening = true;
+  }
   let allowed = false; try { const url = webURL(change.url); allowed = lease.owned || allAccess(tabId) || url.origin === lease.origin; } catch {}
   if (!allowed) { delete leases[tabId]; await detach(tabId); await saveLeases(); }
+  else if (clearedOpening) await saveLeases();
 });
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // Only our own extension pages can change access, never a website/content script.

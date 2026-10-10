@@ -20,3 +20,14 @@ export function requireLease(lease, session, url, { allowAllTabs = false } = {})
   if (!lease.owned && !allowAllTabs && current.origin !== lease.origin) fail('ORIGIN_CHANGED', 'This shared tab changed origin. Share it again from the popup');
   return current;
 }
+
+// Permission to wait for navigation metadata, never to inspect about:blank.
+export function pendingWebURL(tab, lease, session, { allowAllTabs = false } = {}) {
+  if (tab.url && tab.url !== 'about:blank') return null;
+  if (lease?.session && lease.session !== session) fail('SESSION_CONFLICT', 'This tab belongs to another session');
+  if (lease?.owned && lease.openingUrl) {
+    requireLease(lease, session, lease.openingUrl);
+    return webURL(tab.pendingUrl || lease.openingUrl);
+  }
+  return allowAllTabs && tab.pendingUrl ? webURL(tab.pendingUrl) : null;
+}

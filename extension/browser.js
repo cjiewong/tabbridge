@@ -35,9 +35,18 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
   }
 });
 
+function checkScope(scope) {
+  if (scope && (!scope.active || scope.control?.cancelled)) fail('CANCELLED', 'Tab access, debugging or the client ended during this action; inspect before continuing');
+  if (scope?.deadline && Date.now() >= scope.deadline) fail('EXPIRED', 'Request expired; no further browser command was dispatched');
+}
+async function authorizeCommand(tabId, scope) {
+  checkScope(scope);
+  if (scope?.authorize) scope.authorize((await chrome.tabs.get(tabId)).url);
+  checkScope(scope);
+}
 export async function cdp(tabId, method, params = {}) {
   const scope = actionScopes.get(tabId);
-  if (scope && !scope.active) fail('CANCELLED', 'Tab access or debugging ended during this action; inspect before continuing');
+  await authorizeCommand(tabId, scope);
   if (!attachments.has(tabId)) {
     const pending = (async () => {
       try { await chrome.debugger.attach({ tabId }, '1.3'); }
@@ -46,16 +55,50 @@ export async function cdp(tabId, method, params = {}) {
         await chrome.debugger.detach({ tabId }).catch(() => {});
         fail('CANCELLED', 'Tab access ended while attaching; no browser action was dispatched');
       }
+      try { await authorizeCommand(tabId, scope); }
+      catch (error) { await chrome.debugger.detach({ tabId }).catch(() => {}); throw error; }
       await chrome.debugger.sendCommand({ tabId }, 'Page.enable');
-      if (scope && !scope.active) fail('CANCELLED', 'Tab access ended while initializing debugging');
+      await authorizeCommand(tabId, scope);
       await chrome.debugger.sendCommand({ tabId }, 'Runtime.enable');
     })();
     attachments.set(tabId, pending);
     try { await pending; } catch (e) { attachments.delete(tabId); throw e; }
   }
   await attachments.get(tabId);
-  if (scope && !scope.active) fail('CANCELLED', 'Tab access or debugging ended during this action; inspect before continuing');
-  return chrome.debugger.sendCommand({ tabId }, method, params);
+  await authorizeCommand(tabId, scope);
+  const result = await chrome.debugger.sendCommand({ tabId }, method, params);
+  if (scope?.observing) await authorizeCommand(tabId, scope);
+  return result;
+}
+
+const pageStateExpression = `({documentURL: location.href, readyState: document.readyState, domContentLoaded: document.readyState === 'complete' || (performance.getEntriesByType('navigation')[0]?.domContentLoadedEventEnd || 0) > 0, visibilityState: document.visibilityState, documentFocused: document.hasFocus()})`;
+function pageState(tab, documentState) {
+  return { loading: tab.status === 'loading', readyState: documentState.readyState, domContentLoaded: documentState.domContentLoaded, visibilityState: documentState.visibilityState, documentFocused: documentState.documentFocused, discarded: !!tab.discarded, frozen: !!tab.frozen,
+    ...(documentState.visibilityState === 'hidden' ? { renderHint: 'Background pages may defer rendering. If expected content is missing, explicitly activate this authorized tab and wait for that content; do not repeat a write' } : {}) };
+}
+async function waitForDocument(tabId, scope) {
+  for (;;) {
+    checkScope(scope);
+    const tab = await chrome.tabs.get(tabId);
+    scope.authorize?.(tab.url);
+    if (tab.discarded || tab.frozen) fail('FOREGROUND_REQUIRED', 'This tab is discarded or frozen. Explicitly activate the authorized tab, then wait for the expected content');
+    let state;
+    try {
+      const result = await cdp(tabId, 'Runtime.evaluate', { expression: pageStateExpression, returnByValue: true });
+      checkScope(scope);
+      state = result.result?.value;
+    } catch (error) {
+      // Only retry this read of lifecycle metadata during a context transition.
+      if (typeof error.code === 'string' || !/Execution context was destroyed|Cannot find context|Inspected target navigated/i.test(error.message)) throw error;
+    }
+    if (state?.documentURL && state.documentURL !== 'about:blank') {
+      if (state.documentURL.startsWith('chrome-error:')) fail('NAVIGATION_FAILED', 'Chrome could not load this page. Inspect the navigation or network failure before retrying');
+      scope.authorize?.(state.documentURL);
+      if (state.domContentLoaded) return pageState(tab, state);
+    }
+    if (Date.now() >= scope.observationDeadline) fail('READINESS_TIMEOUT', 'DOMContentLoaded did not finish in time. Retry only the read, or explicitly activate a background tab if the task needs foreground rendering');
+    await new Promise(resolve => setTimeout(resolve, Math.min(50, scope.observationDeadline - Date.now())));
+  }
 }
 
 async function objectFor(tabId, ref) {
@@ -107,7 +150,7 @@ export async function snapshot(tabId, { diff = false, maxNodes = 300 } = {}) {
   const changes = diff && previous ? { added: rows.filter(r => !oldTexts.has(r.text)).map(r => `${r.ref ? `[${r.ref}] ` : ''}${r.text}`), removed: previous.rows.filter(r => !newTexts.has(r.text)).map(r => r.text) } : undefined;
   snapshots.set(tabId, { rows });
   // Diff refs must remain usable: include the current interactive reference map.
-  return { tabId, url: tab.url, title: tab.title, active: tab.active, windowFocused: window.focused, snapshotId: id, truncated, ...(changes ? { changes, refs: rows.filter(r => r.ref && !/^\s*(StaticText|RootWebArea)/.test(r.text)) } : { text: full }) };
+  return { tabId, url: tab.url, title: tab.title, active: tab.active, windowFocused: window.focused, ...actionScopes.get(tabId)?.pageState, snapshotId: id, truncated, ...(changes ? { changes, refs: rows.filter(r => r.ref && !/^\s*(StaticText|RootWebArea)/.test(r.text)) } : { text: full }) };
 }
 
 async function pointFor(tabId, ref, { enabled = false, scroll = true } = {}) {
@@ -197,9 +240,16 @@ export async function select(tabId, { ref, value }) {
   }, [value]); return { selected: value };
 }
 
-export async function runAction(method, tabId, params, settings) {
-  const scope = { active: true }; actionScopes.set(tabId, scope);
-  try { return await performAction(method, tabId, params, settings); }
+export async function runAction(method, tabId, params, settings, context = {}) {
+  const observing = ['snapshot', 'read', 'screenshot', 'wait'].includes(method);
+  const timeout = params.timeoutMs ?? 8000;
+  if (observing && (!Number.isInteger(timeout) || timeout < 0 || timeout > 12000)) fail('INVALID_PARAMS', 'timeoutMs must be 0–12000');
+  if (method === 'wait' && (typeof params.text !== 'string' || params.text.length > 1000)) fail('INVALID_PARAMS', 'wait requires text up to 1000 characters');
+  const scope = { active: true, observing, ...context, observationDeadline: context.observationDeadline ?? Math.min(context.deadline ?? Infinity, Date.now() + timeout) }; actionScopes.set(tabId, scope);
+  try {
+    if (observing) scope.pageState = await waitForDocument(tabId, scope);
+    return await performAction(method, tabId, params, settings);
+  }
   finally { if (actionScopes.get(tabId) === scope) actionScopes.delete(tabId); }
 }
 
@@ -221,7 +271,7 @@ async function performAction(method, tabId, params, settings) {
         content = result.result.value;
       }
       const tab = await chrome.tabs.get(tabId);
-      return { tabId, url: tab.url, title: tab.title, ...content };
+      return { tabId, url: tab.url, title: tab.title, ...actionScopes.get(tabId)?.pageState, ...content };
     }
     case 'click': return click(tabId, params);
     case 'hover': return hover(tabId, params);
@@ -288,15 +338,17 @@ async function performAction(method, tabId, params, settings) {
       return { mimeType: 'image/png', data: result.data };
     }
     case 'wait': {
-      const timeout = params.timeoutMs ?? 8000;
-      if (!Number.isInteger(timeout) || timeout < 0 || timeout > 12000 || typeof params.text !== 'string' || params.text.length > 1000) fail('INVALID_PARAMS', 'wait requires text and timeoutMs from 0–12000');
-      const deadline = Date.now() + timeout;
+      const scope = actionScopes.get(tabId);
       do {
-        const result = await cdp(tabId, 'Runtime.evaluate', { expression: `Boolean(document.body && document.body.innerText.includes(${JSON.stringify(params.text)}))`, returnByValue: true });
-        if (result.result.value) return { found: true };
-        await new Promise(r => setTimeout(r, 100));
-      } while (Date.now() < deadline);
-      fail('WAIT_TIMEOUT', 'Text did not appear'); break;
+        const result = await cdp(tabId, 'Runtime.evaluate', { expression: `({...${pageStateExpression}, found: Boolean(document.body && document.body.innerText.includes(${JSON.stringify(params.text)}))})`, returnByValue: true });
+        const state = result.result?.value;
+        if (state?.documentURL) scope.authorize?.(state.documentURL);
+        if (state?.found) return { found: true, ...pageState(await chrome.tabs.get(tabId), state) };
+        if (Date.now() >= scope.observationDeadline) break;
+        await new Promise(r => setTimeout(r, Math.min(100, scope.observationDeadline - Date.now())));
+      } while (Date.now() <= scope.observationDeadline);
+      const state = await cdp(tabId, 'Runtime.evaluate', { expression: pageStateExpression, returnByValue: true });
+      fail('WAIT_TIMEOUT', state.result.value?.visibilityState === 'hidden' ? 'Text did not appear in this background tab. If the task requires it, explicitly activate this authorized tab and wait again; do not repeat a write' : 'Text did not appear; document readiness does not guarantee application content is ready'); break;
     }
     case 'dialog': {
       if (params.accept === undefined) return { dialog: dialogs.get(tabId) || null };

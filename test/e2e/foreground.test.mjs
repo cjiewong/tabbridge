@@ -8,11 +8,22 @@ import { mkdtemp, mkdir, readFile, rm } from 'node:fs/promises';
 import { chromium } from 'playwright';
 import { setup } from '../../lib/setup.mjs';
 import { request } from '../../lib/client.mjs';
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 
 const fixture = `<!doctype html><title>Foreground dialog fixture</title>
-<div id="overlay" style="position:fixed;inset:0;background:#eee"><div id="content" role="dialog" aria-label="Foreground dialog" hidden><h1>Dialog ready</h1><button>Continue fixture</button></div></div>
+<nav>Fixture navigation</nav><footer>Fixture footer</footer>
+<div id="overlay" style="position:fixed;inset:0;background:#eee"><div id="content" role="dialog" aria-label="Foreground dialog" hidden><h1>Dialog ready</h1><table><caption>Ad groups ready</caption><tr><th>Group</th><th>State</th></tr><tr><td>Fixture campaign</td><td>Ready</td></tr></table><button>Continue fixture</button></div></div>
 <script>
-function render(){document.querySelector('#content').hidden=document.visibilityState!=='visible'||!document.hasFocus()}
+let pending=false;
+function render(){
+ const visible=document.visibilityState==='visible'&&document.hasFocus();
+ if(!visible){document.querySelector('#content').hidden=true;return}
+ if(!pending&&document.querySelector('#content').hidden){pending=true;setTimeout(()=>{
+  if(document.visibilityState==='visible'&&document.hasFocus()){document.querySelector('#content').hidden=false;window.foregroundRenders=(window.foregroundRenders||0)+1}
+  pending=false;
+ },200)}
+}
 document.addEventListener('visibilitychange',render);window.addEventListener('focus',render);window.addEventListener('blur',render);render();
 </script>`;
 
@@ -71,19 +82,39 @@ test('activation reveals a real background dialog without focus emulation', { ti
       await new Promise(resolve => setTimeout(resolve, 100));
     }
     assert.equal(background.active, false);
-    assert.doesNotMatch(background.text, /Dialog ready/);
+    assert.doesNotMatch(background.text, /Dialog ready|Ad groups ready/);
+    assert.equal(background.readyState, 'complete');
+    assert.equal(background.domContentLoaded, true);
+    assert.equal(background.visibilityState, 'hidden');
+    assert.equal(background.documentFocused, false);
+    assert.match(background.renderHint, /Background/);
+    await assert.rejects(call('wait', { tabId: target.id, text: 'Ad groups ready', timeoutMs: 100 }), error => error.code === 'WAIT_TIMEOUT' && /background tab/.test(error.message));
     const before = await context.pages().find(page => page.url() === url).evaluate(() => ({ visibility: document.visibilityState, focused: document.hasFocus() }));
     assert.equal(before.visibility, 'hidden');
     assert.equal(before.focused, false);
-    const activated = await call('activate', { tabId: target.id });
+    const client = new Client({ name: 'foreground-readiness', version: '1.0.0' });
+    let activated;
+    try {
+      await client.connect(new StdioClientTransport({ command: process.execPath, args: ['bin/tabbridge.mjs', 'mcp', '--session', 'foreground-fixture'], env: { PATH: process.env.PATH, TABBRIDGE_HOME: process.env.TABBRIDGE_HOME } }));
+      const result = await client.callTool({ name: 'browser_activate', arguments: { tabId: target.id, waitForText: 'Ad groups ready', timeoutMs: 3000 } });
+      assert.notEqual(result.isError, true, JSON.stringify(result));
+      activated = JSON.parse(result.content[0].text);
+    } finally { await client.close(); }
     assert.equal(activated.active, true);
     assert.equal(activated.windowFocused, true);
+    assert.equal(activated.wait.found, true);
+    assert.equal(activated.wait.visibilityState, 'visible');
+    assert.equal(activated.wait.documentFocused, true);
     await call('wait', { tabId: target.id, text: 'Dialog ready' });
     const visible = await call('snapshot', { tabId: target.id });
     assert.equal(visible.active, true);
     assert.equal(visible.windowFocused, true);
     assert.match(visible.text, /Dialog ready/);
+    assert.match(visible.text, /Ad groups ready|Fixture campaign/);
+    assert.equal(visible.visibilityState, 'visible');
+    assert.equal(visible.documentFocused, true);
     const page = context.pages().find(page => page.url() === url);
+    assert.equal(await page.evaluate(() => window.foregroundRenders), 1);
     assert.deepEqual(await page.evaluate(() => ({ visibility: document.visibilityState, focused: document.hasFocus() })), { visibility: 'visible', focused: true });
   } finally {
     await browser?.close();

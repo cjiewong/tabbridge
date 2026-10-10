@@ -138,12 +138,25 @@ node bin/tabbridge.mjs network 123 --json '{"action":"stop"}' --session research
 
 Network capture is explicit and bounded, omits headers/bodies and removes queries/fragments/credentials from URLs. Request paths can still contain private information. Capture is cleared on release, revocation or debugger detach; a stop retains its bounded records until then. Screenshot limits are 16,384 pixels per side, 32 million pixels and the existing image-message size cap. Choose `fullPage` or an element ref rather than combining them. See the [feature comparison](docs/FEATURE_COMPARISON.md) for the scope relative to other browser MCP projects.
 
-### Foreground dialogs and user handoffs
+### Navigation and page readiness
 
-`browser_activate` (CLI: `activate TAB`) selects the target tab and brings its Chrome window forward. It uses the same tab grants, exclusions and session ownership as other actions; JavaScript evaluation is not required. Snapshots report `active` and `windowFocused` so agents can distinguish a selected tab from a focused browser window.
+`open` returns a tab ID immediately and includes `loading`; it does not claim the page has finished loading. `snapshot`, `read`, `screenshot` and `wait` wait for a pending HTTP(S) navigation to commit and for `DOMContentLoaded` to finish. Their optional `timeoutMs` defaults to 8,000 and is bounded to 0–12,000. Navigation, DOM readiness and a text wait share one budget, also capped by the request deadline. The initial `about:blank`/empty URL of an agent-created tab is only a waiting state; it does not authorize inspecting arbitrary blank or protected pages. Writes are not retried.
+
+Snapshots and text reads include `loading`, `readyState`, `domContentLoaded`, `visibilityState`, `documentFocused`, `discarded` and `frozen`, with a rendering hint for hidden pages. `readyState: "complete"` describes the document, not an application's tables or data. Wait for the specific expected content with `browser_wait` when verifying a result. Discarded/frozen tabs report `FOREGROUND_REQUIRED` rather than returning a misleading empty read.
 
 ```sh
-node bin/tabbridge.mjs activate 123 --session research
+node bin/tabbridge.mjs snapshot 123 --json '{"timeoutMs":8000}' --session research
+node bin/tabbridge.mjs wait 123 "Expected table heading" --json '{"timeoutMs":8000}' --session research
+```
+
+A `PAGE_LOADING` or `READINESS_TIMEOUT` is a bounded observation failure. Inspect status and retry the read when appropriate; do not create a duplicate tab, reload or replay a previous write as a recovery step. A completed read is still a point-in-time observation; application rendering can continue afterward.
+
+### Foreground dialogs and user handoffs
+
+`browser_activate` (CLI: `activate TAB`) selects the target tab and brings its Chrome window forward. It uses the same tab grants, exclusions and session ownership as other actions; JavaScript evaluation is not required. Snapshots report `active` and `windowFocused` along with document visibility/focus so agents can distinguish a selected tab from a visible, focused page. Pass optional `waitForText` and `timeoutMs` to activation to wait for the intended content before it returns. If that wait fails, activation may already have changed the foreground window.
+
+```sh
+node bin/tabbridge.mjs activate 123 --json '{"waitForText":"Expected table heading","timeoutMs":8000}' --session research
 node bin/tabbridge.mjs snapshot 123 --session research
 ```
 
