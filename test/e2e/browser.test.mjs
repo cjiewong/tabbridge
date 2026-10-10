@@ -54,6 +54,8 @@ test('real extension + native host + CLI/MCP transport end to end', { timeout: 1
     };
   try {
     context = await chromium.launchPersistentContext(profile, launchOptions);
+    const worker = context.serviceWorkers()[0] || await context.waitForEvent('serviceworker');
+    await worker.evaluate(() => chrome.storage.local.set({ uiLanguage: 'en' }));
     let popup = await context.newPage(); await popup.goto(`chrome-extension://${installed.extensionId}/popup.html`);
     await popup.getByRole('button', { name: 'Connect', exact: true }).click();
     await t.test('native messaging handshake', async () => {
@@ -188,9 +190,11 @@ test('real extension + native host + CLI/MCP transport end to end', { timeout: 1
     });
     await t.test('developer evaluation is opt-in and grants can be revoked', async () => {
       await assert.rejects(call('evaluate', { tabId, expression: 'document.title' }), { code: 'DEVELOPER_DISABLED' });
+      await popup.locator('#advanced-settings > summary').click();
       await popup.getByRole('checkbox', { name: /JavaScript evaluation/ }).check();
       assert.equal((await call('evaluate', { tabId, expression: 'document.title' })).value, 'TabBridge test desk');
       await popup.getByRole('checkbox', { name: /JavaScript evaluation/ }).uncheck();
+      await popup.locator('#advanced-settings > summary').click();
     });
     await t.test('screenshot is a real PNG', async () => {
       const png = await call('screenshot', { tabId });
@@ -257,7 +261,7 @@ test('real extension + native host + CLI/MCP transport end to end', { timeout: 1
     let globalTabId;
     await t.test('all-web-tabs option discovers unshared tabs and actions auto-claim', async () => {
       assert.equal((await call('status')).allowAllTabs, false);
-      await popup.getByRole('checkbox', { name: /^All web tabs/ }).check();
+      await popup.getByRole('radio', { name: 'All web tabs', exact: true }).check();
       assert.equal((await call('status')).allowAllTabs, true);
       const visible = (await call('tabs')).tabs;
       assert.ok(visible.some(t => t.tabId === tabId));
@@ -300,7 +304,7 @@ test('real extension + native host + CLI/MCP transport end to end', { timeout: 1
       assert.match((await call('snapshot', { tabId: globalTabId })).text, /Next page/);
     });
     await t.test('disabling all-tab access revokes global leases and restores manual sharing', async () => {
-      await popup.getByRole('checkbox', { name: /^All web tabs/ }).uncheck();
+      await popup.getByRole('radio', { name: 'Individual tabs', exact: true }).check();
       assert.equal((await call('status')).allowAllTabs, false);
       assert.deepEqual((await call('tabs')).tabs, []);
       await assert.rejects(call('snapshot', { tabId: globalTabId }), { code: 'TAB_NOT_GRANTED' });
@@ -311,13 +315,13 @@ test('real extension + native host + CLI/MCP transport end to end', { timeout: 1
       await assert.rejects(call('close', { tabId: globalTabId }), { code: 'USER_TAB' });
     });
     await t.test('existing manual grants survive toggling global access at the same origin', async () => {
-      await popup.getByRole('checkbox', { name: /^All web tabs/ }).check();
-      await popup.getByRole('checkbox', { name: /^All web tabs/ }).uncheck();
+      await popup.getByRole('radio', { name: 'All web tabs', exact: true }).check();
+      await popup.getByRole('radio', { name: 'Individual tabs', exact: true }).check();
       assert.match((await call('snapshot', { tabId: globalTabId })).text, /Next page/);
       await popup.getByRole('button', { name: 'Revoke Next', exact: true }).click();
     });
     await t.test('revoking global access cancels the active wait and stops queued actions', async () => {
-      await popup.getByRole('checkbox', { name: /^All web tabs/ }).check();
+      await popup.getByRole('radio', { name: 'All web tabs', exact: true }).check();
       const fresh = await call('snapshot', { tabId });
       const unblockText = 'Queue released after revocation';
       const blockerDone = call('wait', { tabId, text: unblockText, timeoutMs: 12000 }).catch(e => e);
@@ -349,7 +353,7 @@ test('real extension + native host + CLI/MCP transport end to end', { timeout: 1
       assert.equal(result?.connected, true);
     });
     await t.test('global opt-in survives a full Chrome restart and authorizes fresh tabs', async () => {
-      await popup.getByRole('checkbox', { name: /^All web tabs/ }).check();
+      await popup.getByRole('radio', { name: 'All web tabs', exact: true }).check();
       assert.equal((await call('status')).allowAllTabs, true);
       await context.close();
       context = await chromium.launchPersistentContext(profile, launchOptions);
@@ -368,11 +372,11 @@ test('real extension + native host + CLI/MCP transport end to end', { timeout: 1
     await popup.getByRole('button', { name: 'Refresh', exact: true }).click();
     await popup.locator('body').screenshot({ path: 'artifacts/extension-popup.png' });
     await t.test('stop disconnects and revokes everything', async () => {
-      await popup.getByRole('checkbox', { name: /^All web tabs/ }).check();
+      await popup.getByRole('radio', { name: 'All web tabs', exact: true }).check();
       await popup.getByRole('button', { name: 'Stop & revoke all', exact: true }).click();
       await assert.rejects(call('status'), e => ['STOPPED', 'NOT_CONNECTED', 'DISCONNECTED'].includes(e.code));
       await popup.waitForFunction(() => document.getElementById('status').textContent === 'Disconnected' && !document.getElementById('all-tabs').checked);
-      assert.equal(await popup.getByRole('checkbox', { name: /^All web tabs/ }).isChecked(), false);
+      assert.equal(await popup.getByRole('radio', { name: 'All web tabs', exact: true }).isChecked(), false);
       await assert.rejects(call('status'), e => ['NOT_CONNECTED', 'DISCONNECTED'].includes(e.code));
     });
   } finally {

@@ -8,7 +8,7 @@ TabBridge is an independent, local browser automation toolkit for Codex CLI and 
 
 > **Early release (0.2).** This is an independently implemented project, not an OpenAI plugin or an official compatibility layer. It does not connect to private ChatGPT pipes, copy official plugin code, or bypass their authorization checks.
 
-<img src="docs/assets/popup.png" width="410" alt="TabBridge extension popup showing connection status and explicit tab sharing">
+<img src="docs/assets/popup.png" width="410" alt="TabBridge extension popup showing access modes, searchable tab states and a fixed stop control">
 
 ## What works
 
@@ -54,6 +54,8 @@ The runtime has **zero npm dependencies**. `npm install` is only needed for deve
 5. Run `node bin/tabbridge.mjs doctor`.
 
 All-web-tabs access, agent-created tabs and developer JavaScript are **off by default**. Enable them individually in the popup if needed. **Stop & revoke all** disconnects the bridge and disables all three options.
+
+The popup follows Chrome’s interface language (Chinese or English); the language selector saves an explicit preference. Select **Individual tabs** or **All web tabs** for access, and expand **Advanced settings** for JavaScript evaluation. Search by title/domain or filter **In use** / **Blocked**. Each row retains its domain and shows its access state; **In use** means a session owns the tab, not that a command is currently executing. The current web tab appears first, and the stop control stays visible while the list scrolls. **Details** shows connection/version information and copies a diagnostic summary without page titles, URLs or session IDs.
 
 ### Access all tabs without sharing individually
 

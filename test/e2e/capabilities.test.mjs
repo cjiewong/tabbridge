@@ -59,6 +59,8 @@ test('expanded tools operate on local fixtures with authorization and bounded ou
       args: [`--disable-extensions-except=${path.resolve('extension')}`, `--load-extension=${path.resolve('extension')}`],
       viewport: { width: 1000, height: 800 }
     });
+    const worker = context.serviceWorkers()[0] || await context.waitForEvent('serviceworker');
+    await worker.evaluate(() => chrome.storage.local.set({ uiLanguage: 'en' }));
     const popup = await context.newPage(); await popup.goto(`chrome-extension://${installed.extensionId}/popup.html`);
     await popup.getByRole('button', { name: 'Connect', exact: true }).click();
     for (let attempt = 0; attempt < 50; attempt++) {

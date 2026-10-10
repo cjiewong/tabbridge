@@ -13,6 +13,7 @@ export const extensionFiles = [
   'manifest.json',
   'network.js',
   'policy.js',
+  'popup-i18n.js',
   'popup.css',
   'popup.html',
   'popup.js'

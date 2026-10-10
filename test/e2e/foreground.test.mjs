@@ -51,6 +51,8 @@ test('activation reveals a real background dialog without focus emulation', { ti
     const context = browser.contexts()[0];
     const popup = await context.newPage();
     await popup.goto(`chrome-extension://${installed.extensionId}/popup.html`);
+    await popup.evaluate(() => chrome.storage.local.set({ uiLanguage: 'en' }));
+    await popup.reload();
     await popup.getByRole('button', { name: 'Connect', exact: true }).click();
     const call = (method, params = {}) => request(method, params, { session: 'foreground-fixture' });
     for (let attempt = 0; attempt < 50; attempt++) {

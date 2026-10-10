@@ -1,17 +1,24 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>TabBridge</title><link rel="stylesheet" href="popup.css"></head>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>TabBridge</title><link rel="stylesheet" href="popup.css"></head>
 <body>
-  <header><div class="brand"><span class="mark">↔</span><div><h1>TabBridge</h1><p>Your browser. Your call.</p></div></div><span class="version">0.2</span></header>
+  <header>
+    <div class="brand"><span class="mark" aria-hidden="true">↔</span><div class="brand-copy"><div class="brand-line"><h1>TabBridge</h1><span class="version" id="version"></span></div><div class="connection"><span id="dot" class="dot" aria-hidden="true"></span><span id="status" role="status">Checking connection…</span></div></div></div>
+    <div class="header-actions"><select id="language" aria-label="Language"><option value="zh">中文</option><option value="en">English</option></select><button id="diagnostics" class="text-button" aria-controls="diagnostics-panel" aria-expanded="false" data-i18n="detailsShort">Details</button><button id="connect" disabled data-i18n="connect">Connect</button></div>
+  </header>
   <main>
-    <section class="connection"><div><span id="dot" class="dot"></span><strong id="status">Checking connection…</strong></div><button id="connect" disabled>Connect</button></section>
-    <p id="error" role="status"></p>
-    <section class="settings"><label><span><strong>All web tabs</strong><small>CLI/MCP can read, control and close all current and future HTTP(S) tabs, including signed-in pages. No individual sharing needed.</small></span><input id="all-tabs" type="checkbox" disabled></label><label><span><strong>Agent-created tabs</strong><small>Agents may open and control new HTTP(S) tabs.</small></span><input id="new-tabs" type="checkbox" disabled></label><label><span><strong>JavaScript evaluation</strong><small>Developer access within accessible tabs.</small></span><input id="developer" type="checkbox" disabled></label></section>
-    <div class="section-heading"><h2 id="tabs-heading">Share a tab</h2><button class="text-button" id="refresh">Refresh</button></div>
-    <p class="hint" id="access-hint">Shared tabs include their page content and frames. Access ends when you revoke it, the origin changes, or Chrome restarts.</p>
-    <p class="hint" id="tabs-loading" role="status">Loading tabs…</p>
-    <div id="tabs" aria-live="polite" aria-busy="true"></div>
-    <section class="empty" id="empty" hidden>No web tabs are open.</section>
+    <section class="controls" aria-label="Tab access">
+      <p id="error" role="alert" hidden></p>
+      <fieldset class="access-mode"><legend data-i18n="access">Tab access</legend><div class="mode-options"><label><input id="shared-tabs" type="radio" name="access-mode" value="shared" checked disabled aria-describedby="access-hint"><span data-i18n="individual">Individual tabs</span></label><label><input id="all-tabs" type="radio" name="access-mode" value="all" disabled aria-describedby="access-hint"><span data-i18n="all">All web tabs</span></label></div></fieldset>
+      <p class="hint" id="access-hint"></p>
+      <label class="setting-row"><span data-i18n="newTabs">Agent-created tabs</span><input id="new-tabs" type="checkbox" disabled></label>
+      <details id="advanced-settings"><summary><span data-i18n="advanced">Advanced settings</span><span id="developer-badge" class="badge scripting" hidden data-i18n="scriptingOn">Scripting on</span></summary><label class="setting-row developer-row"><span><strong data-i18n="developer">JavaScript evaluation</strong><small data-i18n="developerHint">Allow arbitrary code within accessible pages.</small></span><input id="developer" type="checkbox" disabled></label></details>
+    </section>
+    <section class="tab-controls"><div class="section-heading"><h2 id="tabs-heading" data-i18n="tabs">Web tabs</h2><span id="tab-count"></span><button class="text-button" id="refresh" data-i18n="refresh">Refresh</button></div><div class="search-row"><input type="search" id="search" autocomplete="off" spellcheck="false" aria-label="Search tabs" placeholder="Search title or domain"><select id="filter" aria-label="Filter tabs"><option value="all" data-i18n="filterAll">All tabs</option><option value="in-use" data-i18n="filterInUse">In use</option><option value="blocked" data-i18n="filterBlocked">Blocked</option></select></div></section>
+    <section class="tab-list" aria-labelledby="tabs-heading"><p id="tabs-loading" role="status" data-i18n="loading">Loading tabs…</p><div id="tabs" aria-busy="true"></div><div class="empty" id="empty" hidden><p id="empty-text"></p><button id="reset-filter" class="text-button" hidden data-i18n="reset">Clear filters</button></div></section>
   </main>
-  <footer><span>Local connection · No cloud relay</span><button id="stop" class="stop">Stop & revoke all</button></footer>
+  <footer><span id="session-summary"></span><button id="stop" class="stop" data-i18n="stop">Stop & revoke all</button></footer>
+  <section id="diagnostics-panel" class="diagnostics-panel" aria-label="Connection details" hidden><div class="section-heading"><h2 data-i18n="details">Connection details</h2><button id="close-diagnostics" class="text-button" data-i18n="close">Close</button></div><dl><div><dt data-i18n="version">Extension version</dt><dd id="diagnostic-version"></dd></div><div><dt data-i18n="connection">Connection</dt><dd id="diagnostic-connection"></dd></div><div><dt data-i18n="mode">Access mode</dt><dd id="diagnostic-mode"></dd></div></dl><p id="diagnostic-error" hidden></p><p class="hint" data-i18n="diagnosticHint">For installation errors, run this in the project directory:</p><code>node bin/tabbridge.mjs doctor</code><button id="copy-diagnostics" data-i18n="copy">Copy diagnostics</button><p id="copy-status" role="status"></p></section>
   <script src="popup.js" type="module"></script>
-</body></html>
+</body>
+</html>

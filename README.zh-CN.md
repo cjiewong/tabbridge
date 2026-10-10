@@ -20,8 +20,8 @@ node bin/tabbridge.mjs setup
 
 1. 打开 `chrome://extensions`，启用开发者模式。
 2. 点击“加载已解压的扩展程序”，选择项目的 `extension` 文件夹。
-3. 打开 TabBridge 扩展，点击 **Connect**。
-4. 对指定标签点击 **Share**，或打开 **All web tabs（所有网页标签）**，让 CLI/MCP 无需逐个分享即可接管全部网页标签。
+3. 打开 TabBridge 扩展，点击 **连接（Connect）**。
+4. 对指定标签点击 **分享（Share）**，或选择 **所有网页（All web tabs）**，让 CLI/MCP 无需逐个分享即可接管全部网页标签。
 5. 执行 `node bin/tabbridge.mjs doctor` 验证连接。
 
 `setup` 仅注册 TabBridge 自己的用户级 Native Messaging 主机，不修改其他扩展。可通过 `--browser chromium`、`--browser edge` 或 `--browser testing` 选择浏览器；testing 选项对应 Chrome for Testing 146+ 的独立注册位置，其他浏览器/平台组合需按实际环境验证。`doctor` 包含本机路径，公开报错前请先脱敏。
@@ -47,7 +47,9 @@ codex mcp add tabbridge -- /absolute/path/to/node /absolute/path/to/tabbridge/bi
 - 会话隔离、停止并撤销全部授权、本地 host 断线恢复。
 - 开发者可在扩展中单独启用 JavaScript 求值。
 
-“所有网页标签”“允许新建标签”和“JavaScript 求值”默认关闭。**Stop & revoke all** 会断开连接、撤销全部标签授权，并关闭这三个选项。
+“所有网页”“允许新建标签”和“JavaScript 求值”默认关闭。**停止并撤销全部授权（Stop & revoke all）** 会断开连接、撤销全部标签授权，并关闭这三个选项。
+
+面板跟随 Chrome 的界面语言显示中文或英文，也可用语言菜单保存个人偏好。访问范围可选 **逐个授权** 或 **所有网页**；JavaScript 求值位于折叠的 **高级设置** 内。支持按标题、域名搜索，以及 **已接管／已屏蔽** 筛选。标签行始终保留域名并显示授权状态；**已接管** 表示会话拥有控制权，不代表正在执行命令。当前网页标签排在首位，列表滚动时停止按钮始终可见。**诊断** 显示连接状态和真实版本号，复制的诊断摘要不含页面标题、URL 或会话 ID。
 
 ## 无需逐个 Share
 

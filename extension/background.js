@@ -5,6 +5,14 @@ const HOST = 'io.github.cjiewong.tabbridge';
 let port; let connected = false; let lastError = ''; let reconnectTimer; let retryDelay = 500;
 let settings = { enabled: false, allowAllTabs: false, allowNewTabs: false, developer: false };
 let leases = {}; let blockedTabs = {}; const locks = new Map(); const activeRequests = new Map();
+let uiNotification;
+function notifyUI() {
+  clearTimeout(uiNotification);
+  uiNotification = setTimeout(() => {
+    // Extension pages only; no page content or identifiers in the notification.
+    chrome.runtime.sendMessage({ type: 'ui.changed' }).catch(() => {});
+  }, 50);
+}
 const ready = Promise.all([chrome.storage.local.get('settings'), chrome.storage.session.get(['leases', 'blockedTabs'])]).then(([local, session]) => {
   settings = { ...settings, ...local.settings }; leases = session.leases || {}; blockedTabs = session.blockedTabs || {};
 });
@@ -18,6 +26,7 @@ function checkLease(tabId, session, url) {
 function updateBadge() {
   chrome.action.setBadgeText({ text: connected ? settings.allowAllTabs ? 'ALL' : String(Object.keys(leases).length || '') : settings.enabled ? '!' : '' });
   chrome.action.setBadgeBackgroundColor({ color: connected ? '#16705b' : '#b65521' });
+  notifyUI();
 }
 function connect() {
   if (port || !settings.enabled) return;
@@ -140,9 +149,13 @@ async function dispatch(method, params, session, deadline, control) {
   return runAction(method, tabId, params, settings);
 }
 
+chrome.tabs.onActivated.addListener(notifyUI);
+chrome.tabs.onCreated.addListener(notifyUI);
+chrome.windows.onFocusChanged.addListener(notifyUI);
 chrome.tabs.onRemoved.addListener(tabId => { delete leases[tabId]; delete blockedTabs[tabId]; detach(tabId); saveLeases(); });
 chrome.tabs.onUpdated.addListener(async (tabId, change) => {
   await ready;
+  if (change.url || change.title) notifyUI();
   if (!change.url) return;
   invalidate(tabId); const lease = leases[tabId];
   if (!lease) return;
@@ -152,11 +165,15 @@ chrome.tabs.onUpdated.addListener(async (tabId, change) => {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // Only our own extension pages can change access, never a website/content script.
   if (sender.id !== chrome.runtime.id || !sender.url?.startsWith(chrome.runtime.getURL(''))) return false;
+  if (message.type === 'ui.changed') return false;
   (async () => {
     await ready;
     switch (message.type) {
       case 'ui.status': return { connected, lastError, settings, leases, blockedTabs };
-      case 'ui.tabs': return { tabs: (await chrome.tabs.query({})).filter(isWebTab).map(t => ({ id: t.id, title: t.title, url: t.url })) };
+      case 'ui.tabs': {
+        const [tabs, window] = await Promise.all([chrome.tabs.query({}), chrome.windows.getLastFocused().catch(() => null)]);
+        return { tabs: tabs.filter(isWebTab).map(t => ({ id: t.id, title: t.title, url: t.url, current: t.active && t.windowId === window?.id })) };
+      }
       case 'ui.connect': settings.enabled = true; await chrome.storage.local.set({ settings }); connect(); return { ok: true };
       case 'ui.settings': return serial('ui:settings', async () => {
         const wasAll = settings.allowAllTabs;
@@ -193,7 +210,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       }
       default: fail('INVALID_METHOD', 'Unknown UI action');
     }
-  })().then(sendResponse).catch(e => sendResponse({ error: e.message }));
+  })().then(sendResponse).catch(e => sendResponse({ error: e.message, code: e.code || 'BROWSER_ERROR' }));
   return true;
 });
 chrome.alarms.create('reconnect', { periodInMinutes: 0.5 });

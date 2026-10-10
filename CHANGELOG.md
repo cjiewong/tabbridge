@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Redesign the popup (at most 600px) with Chinese/English language preferences, manifest-derived version, explicit access modes, folded scripting controls, title/domain search, session/block filters, current-tab ordering and a fixed Stop & revoke all footer.
+- Fit the fixed footer to Chrome’s actual popup viewport, including short windows, with a regression that opens the native toolbar popup.
+- Refresh popup state on connection, grant/session and tab changes, preserve domains beside session badges, and offer connection diagnostics without copying page/session data.
+
 - Cancel in-flight action scopes on revocation/detach and refuse late debugger attachments, with a real-browser regression that revokes a grant while attachment is pending.
 - Add rendered-text reading, hover, HTML5/pointer drag, local file selection, modifier key combinations, full-page/element screenshots and explicit bounded network metadata capture, following a documented comparison with Chrome MCP and Chrome DevTools MCP.
 - Validate upload paths in the native host, select files without duplicate change events and clear file inputs using the platform's supported empty value.
