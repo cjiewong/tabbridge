@@ -4,6 +4,7 @@
 
 - Redesign the popup (at most 600px) with Chinese/English language preferences, manifest-derived version, explicit access modes, folded scripting controls, title/domain search, session/block filters, current-tab ordering and a fixed Stop & revoke all footer.
 - Fit the fixed footer to Chrome’s actual popup viewport, including short windows, with a regression that opens the native toolbar popup.
+- Retry transient disposable-profile cleanup races after stopping the foreground test browser.
 - Refresh popup state on connection, grant/session and tab changes, preserve domains beside session badges, and offer connection diagnostics without copying page/session data.
 
 - Cancel in-flight action scopes on revocation/detach and refuse late debugger attachments, with a real-browser regression that revokes a grant while attachment is pending.

@@ -96,6 +96,8 @@ test('activation reveals a real background dialog without focus emulation', { ti
     }
     await new Promise(resolve => server.close(resolve));
     if (previousHome === undefined) delete process.env.TABBRIDGE_HOME; else process.env.TABBRIDGE_HOME = previousHome;
-    await rm(temporary, { recursive: true, force: true });
+    // Chrome's child processes may finish writing the disposable profile just
+    // after the parent exits. Retry transient filesystem cleanup races only.
+    await rm(temporary, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   }
 });
