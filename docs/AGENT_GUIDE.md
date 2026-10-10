@@ -5,6 +5,7 @@
 3. Read `browser_snapshot`. Use current references for click/fill/select. Read a new snapshot after changes; prior references expire after the next snapshot or navigation.
 4. Prefer `browser_batch` for predictable steps on one page. It returns completed actions and a new snapshot. A partial failure is not permission to replay the whole batch.
 5. Use screenshots when layout or visual state matters. Prefer the text tree for ordinary controls. Respect `truncated`; raise maxNodes within its limit if needed.
+   If an authorized background page shows a blank modal or waits for visibility/focus, call `browser_activate` on that exact tab, then read a fresh snapshot. Check `active` and `windowFocused`; activation changes the user's foreground window and restores a minimized window. Do not replay the preceding click or submission merely because the background view was blank. Activation can also prepare a user handoff; release control afterward when appropriate.
 6. A timeout/disconnection after an action leaves its outcome unknown. Inspect state first. Never repeat a submission simply because its response was lost.
 7. At task end, release user tabs and deliverables. Close disposable agent-created tabs. With All web tabs enabled, you may also close a user-owned tab when the user explicitly requests that closure. Do not close user tabs as routine cleanup.
 

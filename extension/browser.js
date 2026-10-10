@@ -60,6 +60,7 @@ async function elementCall(tabId, ref, fn, args = []) {
 export async function snapshot(tabId, { diff = false, maxNodes = 300 } = {}) {
   if (!Number.isInteger(maxNodes) || maxNodes < 1 || maxNodes > 1000) fail('INVALID_PARAMS', 'maxNodes must be 1–1000');
   const tab = await chrome.tabs.get(tabId);
+  const window = await chrome.windows.get(tab.windowId);
   const tree = await cdp(tabId, 'Accessibility.getFullAXTree');
   const currentRefs = new Map(); const rows = []; const id = `s${++generation}`;
   const byId = new Map(tree.nodes.map(n => [n.nodeId, n]));
@@ -87,7 +88,7 @@ export async function snapshot(tabId, { diff = false, maxNodes = 300 } = {}) {
   const changes = diff && previous ? { added: rows.filter(r => !oldTexts.has(r.text)).map(r => `${r.ref ? `[${r.ref}] ` : ''}${r.text}`), removed: previous.rows.filter(r => !newTexts.has(r.text)).map(r => r.text) } : undefined;
   snapshots.set(tabId, { rows });
   // Diff refs must remain usable: include the current interactive reference map.
-  return { tabId, url: tab.url, title: tab.title, snapshotId: id, truncated, ...(changes ? { changes, refs: rows.filter(r => r.ref && !/^\s*(StaticText|RootWebArea)/.test(r.text)) } : { text: full }) };
+  return { tabId, url: tab.url, title: tab.title, active: tab.active, windowFocused: window.focused, snapshotId: id, truncated, ...(changes ? { changes, refs: rows.filter(r => r.ref && !/^\s*(StaticText|RootWebArea)/.test(r.text)) } : { text: full }) };
 }
 
 export async function click(tabId, { ref }) {

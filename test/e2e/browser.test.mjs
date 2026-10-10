@@ -17,9 +17,17 @@ const fixture = `<!doctype html><html lang="en"><head><title>TabBridge test desk
 <h1>Test desk</h1><label>Name <input id="name" aria-label="Name"></label>
 <label>Secret <input type="password" value="never-export-this-password" aria-label="Secret"></label>
 <label>Plan <select aria-label="Plan" id="plan"><option value="basic">Basic</option><option value="pro">Pro</option></select></label>
-<button id="save">Save</button><button id="alert">Show dialog</button><button disabled>Disabled</button>
+<button id="save">Save</button><button id="alert">Show dialog</button><button id="focus-dialog">Open focus dialog</button><button disabled>Disabled</button>
 <p id="result" role="status">Ready</p><a href="/next">Next page</a>
-<script>document.querySelector('#save').onclick=()=>{window.saves=(window.saves||0)+1;document.querySelector('#result').textContent='Saved '+document.querySelector('#name').value+' '+document.querySelector('#plan').value};document.querySelector('#alert').onclick=()=>alert('TabBridge test alert');</script></body></html>`;
+<div id="overlay" hidden style="position:fixed;inset:0;background:#eee"><div id="dialog-content" role="dialog" aria-label="Focus dialog" hidden><h2>Focus dialog ready</h2><button id="dismiss">Dismiss focus dialog</button></div></div>
+<script>
+document.querySelector('#save').onclick=()=>{window.saves=(window.saves||0)+1;document.querySelector('#result').textContent='Saved '+document.querySelector('#name').value+' '+document.querySelector('#plan').value};
+document.querySelector('#alert').onclick=()=>alert('TabBridge test alert');
+function renderFocusDialog(){document.querySelector('#dialog-content').hidden=document.visibilityState!=='visible'||!document.hasFocus()}
+document.querySelector('#focus-dialog').onclick=()=>{document.querySelector('#overlay').hidden=false;renderFocusDialog()};
+document.querySelector('#dismiss').onclick=()=>{document.querySelector('#overlay').hidden=true};
+document.addEventListener('visibilitychange',renderFocusDialog);window.addEventListener('focus',renderFocusDialog);window.addEventListener('blur',renderFocusDialog);
+</script></body></html>`;
 
 test('real extension + native host + CLI/MCP transport end to end', { timeout: 120_000 }, async t => {
   const temporary = await mkdtemp(path.join(os.tmpdir(), 'tb-e2e-'));
@@ -57,22 +65,110 @@ test('real extension + native host + CLI/MCP transport end to end', { timeout: 1
       assert.equal(last.connected, true, JSON.stringify(last));
     });
     if (t.signal.aborted) return;
+    await t.test('popup connection and controls are ready while the tab list is still loading', async () => {
+      const delayedPopup = await context.newPage();
+      try {
+        await delayedPopup.addInitScript(() => {
+          const original = chrome.runtime.sendMessage.bind(chrome.runtime);
+          let hold = true;
+          chrome.runtime.sendMessage = async message => {
+            const result = await original(message);
+            if (message.type === 'ui.tabs' && hold) {
+              await new Promise(resolve => { window.finishTabLoading = () => { hold = false; resolve(); }; });
+            }
+            return result;
+          };
+        });
+        await delayedPopup.goto(`chrome-extension://${installed.extensionId}/popup.html`);
+        await delayedPopup.waitForFunction(() => typeof window.finishTabLoading === 'function' && !document.getElementById('all-tabs').disabled);
+        assert.equal(await delayedPopup.locator('#status').textContent(), 'Connected to local host');
+        assert.equal(await delayedPopup.locator('#tabs-loading').isVisible(), true);
+        assert.equal(await delayedPopup.getByRole('button', { name: 'Stop & revoke all' }).isEnabled(), true);
+        await delayedPopup.evaluate(() => window.finishTabLoading());
+        await delayedPopup.locator('#tabs-loading').waitFor({ state: 'hidden' });
+        assert.equal(await delayedPopup.locator('#tabs').getAttribute('aria-busy'), 'false');
+      } finally { await delayedPopup.close(); }
+    });
+    await t.test('an obsolete popup refresh cannot overwrite a newer tab list', async () => {
+      const delayedPopup = await context.newPage();
+      try {
+        await delayedPopup.addInitScript(() => {
+          const original = chrome.runtime.sendMessage.bind(chrome.runtime);
+          let tabRequests = 0;
+          chrome.runtime.sendMessage = async message => {
+            const result = await original(message);
+            if (message.type === 'ui.tabs' && tabRequests++ === 0) {
+              await new Promise(resolve => { window.releaseOldList = resolve; });
+              window.oldReplyDelivered = true;
+              return { tabs: [{ id: 999, title: 'Obsolete fixture tab', url: 'http://127.0.0.1/obsolete' }] };
+            }
+            return result;
+          };
+        });
+        await delayedPopup.goto(`chrome-extension://${installed.extensionId}/popup.html`);
+        await delayedPopup.waitForFunction(() => typeof window.releaseOldList === 'function');
+        await delayedPopup.getByRole('button', { name: 'Refresh', exact: true }).click();
+        await delayedPopup.locator('#tabs-loading').waitFor({ state: 'hidden' });
+        await delayedPopup.evaluate(() => window.releaseOldList());
+        await delayedPopup.waitForFunction(() => window.oldReplyDelivered);
+        assert.doesNotMatch(await delayedPopup.locator('#tabs').textContent(), /Obsolete fixture tab/);
+        assert.equal(await delayedPopup.locator('#tabs').getAttribute('aria-busy'), 'false');
+      } finally { await delayedPopup.close(); }
+    });
     const userPage = await context.newPage(); await userPage.goto(url);
     await t.test('ungranted browser state stays private', async () => {
       assert.deepEqual((await call('tabs')).tabs, []);
       await assert.rejects(call('open', { url }), { code: 'NEW_TABS_DISABLED' });
+      const unsharedId = await popup.evaluate(async url => (await chrome.tabs.query({})).find(tab => tab.url === url).id, url);
+      await assert.rejects(call('activate', { tabId: unsharedId }), { code: 'TAB_NOT_GRANTED' });
     });
     await popup.getByRole('button', { name: 'Refresh', exact: true }).click();
     await popup.getByRole('button', { name: 'Share TabBridge test desk', exact: true }).click();
     const shared = (await call('tabs')).tabs[0]; assert.ok(shared);
     await t.test('claim and session isolation', async () => {
+      await assert.rejects(call('activate', { tabId: shared.tabId }), { code: 'SESSION_CONFLICT' });
       await call('claim', { tabId: shared.tabId });
       await assert.rejects(call('claim', { tabId: shared.tabId }, 'other'), { code: 'SESSION_CONFLICT' });
       await assert.rejects(call('snapshot', { tabId: shared.tabId }, 'other'), { code: 'SESSION_CONFLICT' });
+      await assert.rejects(call('activate', { tabId: shared.tabId }, 'other'), { code: 'SESSION_CONFLICT' });
       await assert.rejects(call('close', { tabId: shared.tabId }), { code: 'USER_TAB' });
       await assert.rejects(call('navigate', { tabId: shared.tabId, url: 'https://example.com' }), { code: 'ORIGIN_CHANGED' });
     });
     const tabId = shared.tabId;
+    await t.test('MCP activation selects a tab in another window and restores a minimized window', async () => {
+      const secondWindow = await popup.evaluate(async url => {
+        const window = await chrome.windows.create({ url, focused: false });
+        return { windowId: window.id, tabId: window.tabs[0].id };
+      }, url + 'window');
+      const client = new Client({ name: 'e2e-activation', version: '1.0.0' });
+      try {
+        await popup.evaluate(async tabId => {
+          await chrome.runtime.sendMessage({ type: 'ui.grant', tabId });
+          const tab = await chrome.tabs.get(tabId);
+          await chrome.tabs.create({ windowId: tab.windowId, url: 'about:blank', active: true });
+        }, secondWindow.tabId);
+        await call('claim', { tabId: secondWindow.tabId });
+        await popup.evaluate(windowId => chrome.windows.update(windowId, { state: 'minimized' }), secondWindow.windowId);
+        await client.connect(new StdioClientTransport({ command: process.execPath, args: ['bin/tabbridge.mjs', 'mcp', '--session', 'e2e'], env: { PATH: process.env.PATH, TABBRIDGE_HOME: process.env.TABBRIDGE_HOME } }));
+        const result = await client.callTool({ name: 'browser_activate', arguments: { tabId: secondWindow.tabId } });
+        assert.notEqual(result.isError, true);
+        const activated = JSON.parse(result.content[0].text);
+        assert.equal(activated.tabId, secondWindow.tabId);
+        assert.equal(activated.windowId, secondWindow.windowId);
+        assert.equal(activated.active, true);
+        assert.equal(activated.windowFocused, true);
+        assert.equal(activated.windowState, 'normal');
+        const actual = await popup.evaluate(async tabId => {
+          const tab = await chrome.tabs.get(tabId);
+          const window = await chrome.windows.get(tab.windowId);
+          return { active: tab.active, focused: window.focused, state: window.state };
+        }, secondWindow.tabId);
+        assert.deepEqual(actual, { active: true, focused: true, state: 'normal' });
+      } finally {
+        await client.close();
+        await popup.evaluate(windowId => chrome.windows.remove(windowId), secondWindow.windowId);
+      }
+    });
     let state = await call('snapshot', { tabId });
     await t.test('snapshot is readable and does not export password values', async () => {
       assert.match(state.text, /Test desk/);
@@ -129,6 +225,15 @@ test('real extension + native host + CLI/MCP transport end to end', { timeout: 1
         child.on('close', code => code ? reject(new Error(stderr)) : resolve(JSON.parse(stdout)));
       });
       assert.equal(result.tabs[0].tabId, tabId);
+      await popup.bringToFront();
+      const activated = await new Promise((resolve, reject) => {
+        const child = spawn(process.execPath, ['bin/tabbridge.mjs', 'activate', String(tabId), '--session', 'e2e'], { env: process.env });
+        let stdout = ''; let stderr = ''; child.stdout.on('data', b => stdout += b); child.stderr.on('data', b => stderr += b);
+        child.on('error', reject);
+        child.on('close', code => code ? reject(new Error(stderr)) : resolve(JSON.parse(stdout)));
+      });
+      assert.equal(activated.active, true);
+      assert.equal(activated.windowFocused, true);
     });
     await t.test('disconnected clients cannot leave queued clicks behind', async () => {
       const fresh = await call('snapshot', { tabId });
@@ -161,6 +266,9 @@ test('real extension + native host + CLI/MCP transport end to end', { timeout: 1
       await assert.rejects(call('snapshot', { tabId }, 'other'), { code: 'SESSION_CONFLICT' });
       assert.ok(!(await call('tabs', {}, 'other')).tabs.some(t => t.tabId === tabId));
       await assert.rejects(call('close', { tabId }, 'other'), { code: 'SESSION_CONFLICT' });
+      await assert.rejects(call('activate', { tabId }, 'other'), { code: 'SESSION_CONFLICT' });
+      const protectedId = await popup.evaluate(() => chrome.tabs.getCurrent().then(tab => tab.id));
+      await assert.rejects(call('activate', { tabId: protectedId }), { code: 'INVALID_URL' });
     });
     await t.test('all-web-tabs mode closes an existing user tab without Share or claim', async () => {
       const disposable = await context.newPage(); await disposable.goto(url + 'close-existing');
@@ -186,6 +294,7 @@ test('real extension + native host + CLI/MCP transport end to end', { timeout: 1
       await assert.rejects(call('snapshot', { tabId: globalTabId }), { code: 'TAB_BLOCKED' });
       await assert.rejects(call('claim', { tabId: globalTabId }), { code: 'TAB_BLOCKED' });
       await assert.rejects(call('close', { tabId: globalTabId }), { code: 'TAB_BLOCKED' });
+      await assert.rejects(call('activate', { tabId: globalTabId }), { code: 'TAB_BLOCKED' });
       await popup.getByRole('button', { name: 'Allow Next', exact: true }).click();
       assert.match((await call('snapshot', { tabId: globalTabId })).text, /Next page/);
     });
@@ -209,14 +318,19 @@ test('real extension + native host + CLI/MCP transport end to end', { timeout: 1
     await t.test('revoking global access stops queued actions on globally claimed tabs', async () => {
       await popup.getByRole('checkbox', { name: /^All web tabs/ }).check();
       const fresh = await call('snapshot', { tabId });
-      const blockerDone = call('wait', { tabId, text: 'not present during revocation', timeoutMs: 1500 }).catch(e => e);
+      const unblockText = 'Queue released after revocation';
+      const blockerDone = call('wait', { tabId, text: unblockText, timeoutMs: 12000 }).catch(e => e);
       await new Promise(r => setTimeout(r, 100));
       const queuedResult = call('click', { tabId, ref: refFor(fresh, 'button', 'Save') }).catch(e => e);
-      await popup.getByRole('checkbox', { name: /^All web tabs/ }).uncheck();
-      await blockerDone;
+      // Keep the queue blocked until revocation completes, independent of UI/runner speed.
+      const changed = await popup.evaluate(() => chrome.runtime.sendMessage({ type: 'ui.settings', allowAllTabs: false }));
+      assert.equal(changed.ok, true);
+      await userPage.evaluate(text => { document.querySelector('#result').textContent = text; }, unblockText);
+      assert.deepEqual(await blockerDone, { found: true });
       const refused = await queuedResult;
       assert.equal(refused.code, 'TAB_NOT_GRANTED');
       assert.equal(await userPage.evaluate(() => window.saves || 0), 0);
+      await popup.getByRole('button', { name: 'Refresh', exact: true }).click();
     });
     await t.test('agent-created tabs are isolated and can be closed', async () => {
       await popup.getByRole('checkbox', { name: /Agent-created tabs/ }).check();
@@ -256,9 +370,10 @@ test('real extension + native host + CLI/MCP transport end to end', { timeout: 1
     await t.test('stop disconnects and revokes everything', async () => {
       await popup.getByRole('checkbox', { name: /^All web tabs/ }).check();
       await popup.getByRole('button', { name: 'Stop & revoke all', exact: true }).click();
-      await assert.rejects(call('status'), e => ['NOT_CONNECTED', 'DISCONNECTED'].includes(e.code));
-      await popup.waitForFunction(() => !document.getElementById('all-tabs').checked);
+      await assert.rejects(call('status'), e => ['STOPPED', 'NOT_CONNECTED', 'DISCONNECTED'].includes(e.code));
+      await popup.waitForFunction(() => document.getElementById('status').textContent === 'Disconnected' && !document.getElementById('all-tabs').checked);
       assert.equal(await popup.getByRole('checkbox', { name: /^All web tabs/ }).isChecked(), false);
+      await assert.rejects(call('status'), e => ['NOT_CONNECTED', 'DISCONNECTED'].includes(e.code));
     });
   } finally {
     await context?.close(); await new Promise(resolve => server.close(resolve));

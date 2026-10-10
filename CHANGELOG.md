@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Add `browser_activate` / CLI `activate` to select authorized tabs, focus their Chrome windows and restore minimized windows, with tab/window focus state in snapshots and regressions for background dialogs, MCP/CLI calls and denied access.
+- Load popup connection/settings independently of the tab list, batch DOM updates and discard obsolete refresh responses so slow tab scans do not block the primary controls.
+- Isolate platform-path tests from a Linux runner's `XDG_CONFIG_HOME`, and keep revocation-test queues blocked until revocation completes rather than relying on UI timing.
 - Add checked-in CI for Node.js 22/24 on macOS and Ubuntu, real-browser E2E jobs, distribution smoke checks and release artifacts, with pinned actions and read-only job permissions.
 - Add security reporting, contribution/PR guidance, conduct rules, issue templates, dependency-update configuration, troubleshooting and a documented release procedure.
 - Validate MCP argument types, numeric bounds and nested batch structures before forwarding a request to Chrome; reject undeclared prototype-named arguments.

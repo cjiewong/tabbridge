@@ -16,6 +16,7 @@ TabBridge is an independent, local browser automation toolkit for Codex CLI and 
 - Share individual user tabs. Claim a tab for one CLI/MCP session; other sessions cannot operate it.
 - Or enable **All web tabs** once: CLI/MCP can discover and automatically claim all current and future HTTP(S) tabs, with per-tab Block/Allow controls.
 - Optionally let agents create their own background tabs. User tabs are retained during routine cleanup; All web tabs also permits explicitly requested closure.
+- Activate an authorized tab and focus its Chrome window, restoring a minimized window when a page needs foreground rendering or a user handoff.
 - Read compact accessibility snapshots, use element references, and request state differences.
 - Click, fill, select, press keys, scroll, navigate, wait for text, and inspect JavaScript dialogs.
 - Capture viewport PNGs and read bounded in-memory console messages.
@@ -107,6 +108,17 @@ node bin/tabbridge.mjs close 456 --session demo
 
 Run `tabbridge help` (or `node bin/tabbridge.mjs help`) for command syntax, and `tools` for complete MCP tool schemas. `--json` accepts structured parameters for batches and advanced operations.
 
+### Foreground dialogs and user handoffs
+
+`browser_activate` (CLI: `activate TAB`) selects the target tab and brings its Chrome window forward. It uses the same tab grants, exclusions and session ownership as other actions; JavaScript evaluation is not required. Snapshots report `active` and `windowFocused` so agents can distinguish a selected tab from a focused browser window.
+
+```sh
+node bin/tabbridge.mjs activate 123 --session research
+node bin/tabbridge.mjs snapshot 123 --session research
+```
+
+Activation changes your foreground window, so use it when the task needs it. Read a fresh snapshot afterward: sites may render dialogs or enable controls only once visible/focused. Activation does not reload the page, repeat a prior click, accept a dialog or bypass verification. OS focus restrictions and site bugs can still require manual attention.
+
 ## Connection and permissions
 
 ```text
@@ -139,6 +151,8 @@ npm run pack:extension
 ```
 
 E2E tests use a disposable Chrome profile, a local fixture website and a profile-specific Native Messaging manifest. They do not read your ordinary browser profile. Set `TABBRIDGE_TEST_CHROME` to an existing Chrome for Testing executable to reuse it. Set `TABBRIDGE_TEST_HEADED=1` to watch the tests. Development packaging requires `zip`, `unzip` and `tar`; E2E host restart checks use `lsof`. See [Contributing](CONTRIBUTING.md) for Linux browser dependencies.
+
+After updating the checkout, reload TabBridge in `chrome://extensions` and restart the MCP client session to refresh its tool list. Inspect access again after a reload before resuming an interrupted task.
 
 The package smoke check extracts an actual npm tarball and runs CLI/setup/uninstall in a temporary directory, without runtime dependencies or a live browser. `npm run pack:release` builds the extension ZIP and CLI tarball with SHA-256 files under `dist/`; it does not publish anything. See [Releasing](docs/RELEASING.md).
 

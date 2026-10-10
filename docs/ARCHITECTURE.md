@@ -24,6 +24,10 @@ The browser module converts a full accessibility tree into compact text. Each sn
 
 Click uses content quads and Chrome input dispatch after checking that the element is visible and unobscured. Fill focuses/selects the field and sends browser text input. DOM JavaScript is used internally for bounded element inspection and native select changes. General expression evaluation is separately opt-in.
 
+Activation uses Chrome's `tabs.update({ active: true })` and `windows.update({ focused: true })` APIs after checking the tab lease. A minimized target window is restored to normal state. It needs no debugger attachment and adds no manifest permission. Snapshots expose tab selection and window focus independently. A focus change can trigger normal page visibility/focus handlers; it does not grant web user activation, replay actions or dismiss browser security UI.
+
+The popup loads its connection/settings state independently of the web-tab list. A slow `tabs.query` response does not block the status or capability controls. Each refresh has a generation token so older asynchronous responses cannot overwrite a newer render. Tab rows are built in a detached fragment and inserted together; no browser page data is cached persistently for popup performance.
+
 Diff snapshots report changed text plus the current reference map, so omitted unchanged nodes never leave the agent with invalid stale IDs.
 
 ## Recovery

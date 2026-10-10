@@ -40,6 +40,7 @@ codex mcp add tabbridge -- /absolute/path/to/node /absolute/path/to/tabbridge/bi
 - 页面无障碍树、元素编号、差异快照，减少无用上下文。
 - 点击、输入、选择、键盘、滚动、导航、等待文字和弹窗处理。
 - PNG 截图、内存控制台日志、批量动作后读取状态。
+- 激活已授权标签并将 Chrome 窗口切到前台；窗口最小化时恢复，支持需要前台渲染的弹窗和人工接手。
 - 会话隔离、停止并撤销全部授权、本地 host 断线恢复。
 - 开发者可在扩展中单独启用 JavaScript 求值。
 
@@ -67,6 +68,17 @@ node bin/tabbridge.mjs release 123 --session demo
 
 开启 All web tabs 后，Agent 可以按你的指令关闭当前会话接管的用户标签；关闭该选项时，只能关闭 Agent 自己创建的标签。日常清理仍应保留用户原有标签。逐个分享模式下，用户标签跨域后自动撤销授权，Chrome 重启后需要重新分享。所有网页模式下无需重新分享。超时意味着结果可能未知，不能盲目重复提交。
 
+## 前台弹窗与人工接手
+
+MCP 工具 `browser_activate`（CLI：`activate TAB`）会选中目标标签并将其所在 Chrome 窗口切到前台，最小化时恢复窗口。它遵守现有标签授权、Block 和会话隔离，无需启用 JavaScript 求值。快照包含 `active` 和 `windowFocused`，分别表示标签是否在窗口中被选中、窗口是否获得焦点。
+
+```sh
+node bin/tabbridge.mjs activate 123 --session demo
+node bin/tabbridge.mjs snapshot 123 --session demo
+```
+
+切到前台会改变当前窗口，只在任务需要时使用；随后读取新快照，再决定下一步。该操作不刷新页面、不重放先前点击、不接受弹窗，也不绕过验证。系统焦点限制或站点自身故障仍可能需要人工处理。
+
 ## 项目状态
 
 0.2 是可运行的早期版本，不承诺与 OpenAI 官方插件功能相同。目前专用工具尚不包含跨进程 iframe 操作、文件上传下载管理、拖拽和移动端模拟。具体支持范围、测试方式和安全边界见英文 README。
@@ -86,6 +98,8 @@ npm run pack:extension
 ```
 
 真实浏览器测试使用独立、可丢弃的配置目录。已有 Chrome for Testing 可通过 `TABBRIDGE_TEST_CHROME` 指定，不会访问日常 Chrome 配置。
+
+更新 checkout 后，在 `chrome://extensions` 重新加载 TabBridge，并新建 MCP 客户端会话以刷新工具列表。扩展重载可能影响标签授权和会话状态，继续旧任务前请重新检查访问状态。
 
 开发打包需要 `zip`、`unzip` 和 `tar`，主机重连测试使用 `lsof`。Linux 的浏览器系统依赖可通过 `npx playwright install --with-deps chromium` 安装。`test:package` 会解压实际 npm 包，在临时目录验证 CLI、安装与卸载，不安装运行时依赖，也不连接日常浏览器。
 

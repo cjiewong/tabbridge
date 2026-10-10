@@ -71,7 +71,7 @@ async function dispatch(method, params, session, deadline, control) {
       if (!isWebTab(tab) || blockedTabs[tab.id] || (lease?.session && lease.session !== session)) continue;
       if (lease?.grant === 'all' && !allAccess(tab.id)) continue;
       if (!lease && !allAccess(tab.id)) continue;
-      result.push({ tabId: tab.id, title: tab.title, url: tab.url, owned: !!lease?.owned, claimed: !!lease?.session, access: lease?.owned ? 'created' : allAccess(tab.id) ? 'all' : 'shared' });
+      result.push({ tabId: tab.id, title: tab.title, url: tab.url, active: tab.active, owned: !!lease?.owned, claimed: !!lease?.session, access: lease?.owned ? 'created' : allAccess(tab.id) ? 'all' : 'shared' });
     }
     return { tabs: result };
   }
@@ -96,6 +96,17 @@ async function dispatch(method, params, session, deadline, control) {
     lease.session = session; await saveLeases(); checkLease(tabId, session, tab.url); return { tabId, title: tab.title, url: tab.url };
   }
   checkLease(tabId, session, tab.url);
+  if (method === 'activate') {
+    const window = await chrome.windows.get(tab.windowId);
+    if (!settings.enabled) fail('STOPPED', 'TabBridge was stopped');
+    checkLease(tabId, session, (await chrome.tabs.get(tabId)).url);
+    await chrome.tabs.update(tabId, { active: true });
+    if (!settings.enabled) fail('STOPPED', 'TabBridge was stopped');
+    checkLease(tabId, session, (await chrome.tabs.get(tabId)).url);
+    await chrome.windows.update(tab.windowId, { focused: true, ...(window.state === 'minimized' ? { state: 'normal' } : {}) });
+    const [currentTab, currentWindow] = await Promise.all([chrome.tabs.get(tabId), chrome.windows.get(tab.windowId)]);
+    return { tabId, windowId: currentTab.windowId, active: currentTab.active, windowFocused: currentWindow.focused, windowState: currentWindow.state };
+  }
   if (method === 'release') {
     await detach(tabId);
     if (lease.owned || lease.grant === 'all') delete leases[tabId]; else lease.session = null;
@@ -144,7 +155,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   (async () => {
     await ready;
     switch (message.type) {
-      case 'ui.status': return { connected, lastError, settings, leases, blockedTabs, tabs: (await chrome.tabs.query({})).filter(isWebTab).map(t => ({ id: t.id, title: t.title, url: t.url })) };
+      case 'ui.status': return { connected, lastError, settings, leases, blockedTabs };
+      case 'ui.tabs': return { tabs: (await chrome.tabs.query({})).filter(isWebTab).map(t => ({ id: t.id, title: t.title, url: t.url })) };
       case 'ui.connect': settings.enabled = true; await chrome.storage.local.set({ settings }); connect(); return { ok: true };
       case 'ui.settings': return serial('ui:settings', async () => {
         const wasAll = settings.allowAllTabs;

@@ -22,6 +22,7 @@ test('MCP SDK negotiates protocol, discovers tools and receives actionable conne
     const { tools } = await client.listTools();
     assert.ok(tools.some(t => t.name === 'browser_snapshot'));
     assert.ok(tools.some(t => t.name === 'browser_batch'));
+    assert.ok(tools.some(t => t.name === 'browser_activate' && !t.annotations.readOnlyHint));
     const result = await client.callTool({ name: 'browser_status', arguments: {} });
     assert.equal(result.isError, true);
     assert.match(result.content[0].text, /NOT_CONNECTED/);

@@ -10,6 +10,8 @@ The `debugger` extension permission is powerful. The implementation restricts it
 
 JavaScript evaluation can read and modify a granted page. It is disabled by default, requires a separate popup toggle, and is not described as read-only. Chrome protected pages remain outside the supported target set.
 
+`activate` selects an authorized tab and focuses its existing Chrome window, restoring it if minimized. It follows the same grant, origin and session checks as page actions. It changes the user's foreground view and may make sensitive page contents visible on screen; agents should use it only when the task needs foreground rendering or a handoff. It does not bypass website verification or browser security controls.
+
 **All web tabs** explicitly grants CLI/MCP access to every current and future HTTP(S) tab in the connected Chrome profile, including signed-in pages and cross-origin navigation. It persists across Chrome restarts. First use automatically assigns a tab to the requesting session; other sessions cannot steal it. This mode also permits closing user-owned tabs controlled by the requesting session; agents must follow the user's requested scope. With global access off, only agent-created tabs may be closed. Individual Block controls override global access for the lifetime of that tab/browser session. Turning off global access revokes global leases; valid manual grants and agent-owned tabs remain. Stop turns global access off too. Browser-internal URLs remain unsupported. This mode is broad access, not a site allowlist.
 
 ## Local trust

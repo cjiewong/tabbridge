@@ -7,7 +7,8 @@ import { setup, uninstall, manifestDirectory } from '../lib/setup.mjs';
 import { extensionId } from '../lib/paths.mjs';
 
 test('native manifests use current browser registration paths on macOS and Linux', () => {
-  const options = { platform: 'darwin', userHome: '/test-user', configHome: undefined };
+  // Explicitly suppress the runner's XDG_CONFIG_HOME when testing fallback paths.
+  const options = { platform: 'darwin', userHome: '/test-user', configHome: null };
   assert.equal(manifestDirectory('chrome', options), '/test-user/Library/Application Support/Google/Chrome/NativeMessagingHosts');
   assert.equal(manifestDirectory('testing', options), '/test-user/Library/Application Support/Google/ChromeForTesting/NativeMessagingHosts');
   assert.equal(manifestDirectory('chromium', options), '/test-user/Library/Application Support/Chromium/NativeMessagingHosts');
