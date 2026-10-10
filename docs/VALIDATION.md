@@ -8,7 +8,7 @@ Latest local validation on 2026-10-10 used macOS (Apple Silicon), Node.js 25.8.1
 - 14 unit/MCP/distribution tests: fragmented framing, malformed/truncated frames, request validation, independent lease/origin checks, official MCP SDK negotiation, malformed tool arguments (including types, numeric bounds, prototype-named fields and nested batches), MCP lifecycle/input limits, platform registration paths, isolated setup/uninstall, repeatable archives, stale ZIP entry removal and rejection of symlinked files/directories.
 - Actual npm tarball extraction and CLI/setup/uninstall smoke check without runtime dependencies or a browser connection.
 - GitHub Actions workflow checked with actionlint 1.7.12; issue forms and Dependabot YAML parsed locally.
-- 27 real-browser checks within the E2E suite (28 Node test results including the parent suite):
+- 35 real-browser checks within the E2E suite (37 Node test results including the two parent suites):
   1. Chrome extension → Native Messaging host handshake.
   2. Unshared tabs remain absent from agent discovery; new tabs disabled by default.
   3. Explicit claim, session isolation, user-tab close refusal and origin scope.
@@ -36,10 +36,18 @@ Latest local validation on 2026-10-10 used macOS (Apple Silicon), Node.js 25.8.1
   25. MCP activation selects the target in another window, restores a minimized window and focuses it; CLI activation and ungranted/blocked/foreign-session/protected-tab refusal are also checked.
   26. Popup status/settings remain available while the web-tab list reply is deliberately held.
   27. A delayed obsolete popup reply cannot replace a newer tab list.
+  28. Rendered text is bounded and excludes hidden content and input/password values; foreign sessions are rejected.
+  29. Hover reveals a real menu, batched hover produces fresh refs and stale refs are refused.
+  30. Modifier select-all/Backspace and Shift input change a real field; malformed combinations cannot modify it.
+  31. HTML5 and pointer gestures produce exactly one drop with real browser input.
+  32. File selection delivers the expected local file bytes once, rejects missing/directory/relative paths and clears the input.
+  33. Full-page and element images have their expected PNG dimensions; conflicting capture options are rejected.
+  34. Explicit network capture records success, HTTP failure and transport failure; strips synthetic secrets, bounds the buffer to 100 requests and clears it on release.
+  35. MCP SDK receives the new rendered-text and full-page screenshot results using the published tool schemas.
 
 The foreground fixture launches its own disposable Chrome process and attaches the test driver to an ephemeral loopback debugging endpoint with `noDefaults: true`. This avoids synthetic focus/visibility overrides and does not disable Chrome's sandbox. Production TabBridge transport remains Native Messaging and a private Unix socket; it does not expose a debugging port.
 
-Both E2E browser fixtures enable Chrome's sandbox. Ubuntu CI uses the runner's installed Chrome sandbox helper with a process-local `CHROME_DEVEL_SANDBOX` setting; it does not disable AppArmor or the browser sandbox.
+The E2E browser fixtures enable Chrome's sandbox. Ubuntu CI configures the matching downloaded Chrome for Testing sandbox helper with root ownership/mode 4755 and a process-local `CHROME_DEVEL_SANDBOX` setting; it does not disable AppArmor or the browser sandbox.
 
 ## Scope of evidence
 

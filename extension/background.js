@@ -118,7 +118,7 @@ async function dispatch(method, params, session, deadline, control) {
   }
   if (method === 'batch') {
     if (!Array.isArray(params.steps) || params.steps.length < 1 || params.steps.length > 12) fail('INVALID_PARAMS', 'batch requires 1–12 steps');
-    const allowed = new Set(['click', 'fill', 'press', 'select', 'scroll', 'wait']);
+    const allowed = new Set(['click', 'hover', 'drag', 'fill', 'press', 'select', 'scroll', 'wait']);
     // Validate the entire batch before doing anything.
     for (const step of params.steps) if (!step || !allowed.has(step.method) || !step.params || typeof step.params !== 'object' || Array.isArray(step.params) || 'tabId' in step.params) fail('INVALID_PARAMS', 'Invalid batch step');
     const results = [];

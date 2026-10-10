@@ -39,7 +39,10 @@ codex mcp add tabbridge -- /absolute/path/to/node /absolute/path/to/tabbridge/bi
 - 复用当前浏览器登录态；支持逐个分享，或一次开启所有网页标签访问。
 - 页面无障碍树、元素编号、差异快照，减少无用上下文。
 - 点击、输入、选择、键盘、滚动、导航、等待文字和弹窗处理。
-- PNG 截图、内存控制台日志、批量动作后读取状态。
+- 悬停菜单、HTML5/指针拖拽和组合键，使用当前快照的元素编号。
+- 为文件输入框选择明确授权的本地文件；读取有长度限制的页面正文。
+- 视口、全页和元素 PNG 截图、内存控制台日志、批量动作后读取状态。
+- 显式开启网络诊断，最多保留 100 条 HTTP(S) 请求状态记录。
 - 激活已授权标签并将 Chrome 窗口切到前台；窗口最小化时恢复，支持需要前台渲染的弹窗和人工接手。
 - 会话隔离、停止并撤销全部授权、本地 host 断线恢复。
 - 开发者可在扩展中单独启用 JavaScript 求值。
@@ -79,9 +82,31 @@ node bin/tabbridge.mjs snapshot 123 --session demo
 
 切到前台会改变当前窗口，只在任务需要时使用；随后读取新快照，再决定下一步。该操作不刷新页面、不重放先前点击、不接受弹窗，也不绕过验证。系统焦点限制或站点自身故障仍可能需要人工处理。
 
+## 菜单、文件、正文与网络诊断
+
+以下元素编号须替换为当前快照返回的真实值，悬停或拖拽后应重新读取快照：
+
+```sh
+node bin/tabbridge.mjs hover 123 s1:e7 --session demo
+node bin/tabbridge.mjs snapshot 123 --session demo
+node bin/tabbridge.mjs drag 123 s2:e8 s2:e12 --session demo
+node bin/tabbridge.mjs press 123 Control+A --session demo
+node bin/tabbridge.mjs read 123 --json '{"maxChars":12000}' --session demo
+node bin/tabbridge.mjs screenshot 123 --full-page --out page.png --session demo
+node bin/tabbridge.mjs screenshot 123 --json '{"ref":"s2:e8"}' --out element.png --session demo
+node bin/tabbridge.mjs upload 123 s2:e15 /absolute/path/to/approved-file.txt --session demo
+node bin/tabbridge.mjs network 123 --json '{"action":"start"}' --session demo
+node bin/tabbridge.mjs network 123 --session demo
+node bin/tabbridge.mjs network 123 --json '{"action":"stop"}' --session demo
+```
+
+`read` 读取渲染后的文本，最多 32,000 字符，超出时标记截断，不遍历跨进程 iframe。`upload` 接受最多 16 个本机绝对路径；通过文件输入框编号及 `--json '{"files":[]}'` 可清空选择。选择文件不自动点击提交按钮，但站点可能立即上传，所以必须先明确文件和目标网站的授权。
+
+网络诊断只在显式 start 后记录，不返回请求/响应头或正文，URL 去除查询参数、片段和凭据；路径仍可能有隐私信息。释放、撤销或调试器断开会清除记录，stop 后保留其已有的有限记录。全页/元素截图受单边 16,384 像素、总计 3,200 万像素和图片消息大小限制，`fullPage` 与元素编号不能同时指定。与 Chrome MCP、Chrome DevTools MCP 的能力差异见[功能对照](docs/FEATURE_COMPARISON.md)。
+
 ## 项目状态
 
-0.2 是可运行的早期版本，不承诺与 OpenAI 官方插件功能相同。目前专用工具尚不包含跨进程 iframe 操作、文件上传下载管理、拖拽和移动端模拟。具体支持范围、测试方式和安全边界见英文 README。
+0.2 是可运行的早期版本，不承诺与 OpenAI 官方插件功能相同。目前专用工具尚不包含跨进程 iframe 操作、下载管理、远程文件上传、原生文件选择器和移动端模拟。拖拽要求两个元素位于同一视口，不支持文件拖拽。具体支持范围、测试方式和安全边界见英文 README。
 
 本地 socket 仅当前系统用户可访问；同用户进程属于信任边界。模型仍需遵循任务授权，标签页授权不等于允许付款、公开发布或删除数据。
 

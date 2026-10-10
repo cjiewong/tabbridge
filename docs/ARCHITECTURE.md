@@ -12,6 +12,8 @@ CLI requests and native messages use 4-byte little-endian length-prefixed JSON. 
 
 Tool calls are checked against the JSON Schema subset declared in `lib/tools.mjs` before contacting Chrome: required/undeclared fields, primitive types, numeric bounds, array limits and batch step structure. Only own properties count as required or declared fields. The extension remains the authority for permissions and action-specific validation.
 
+For file selection, the host validates up to 16 explicit absolute paths, resolves them to existing regular files and forwards paths rather than copying file bytes into protocol messages. If the client disconnects during this preparation, the host does not dispatch the action. Chrome selects the files through `DOM.setFileInputFiles` after the extension checks its tab lease and the referenced file input. Clearing uses the platform-supported empty input value; no form submission is added.
+
 ## Ownership
 
 The extension stores tab leases in `chrome.storage.session`. A lease records tab ID, origin, session owner, whether the tab was created by an agent, and whether access came from the global option. User grants initially have no session; the first explicit claim sets ownership. With All web tabs enabled, discovery covers eligible HTTP(S) tabs and the first action auto-claims an unowned tab. The global option persists in local storage; per-tab exclusions live in session storage. Disabling it invalidates global leases while retaining valid individual grants. CLI session names are supplied by the caller. MCP defaults to a random process-specific session.
@@ -29,6 +31,12 @@ Activation uses Chrome's `tabs.update({ active: true })` and `windows.update({ f
 The popup loads its connection/settings state independently of the web-tab list. A slow `tabs.query` response does not block the status or capability controls. Each refresh has a generation token so older asynchronous responses cannot overwrite a newer render. Tab rows are built in a detached fragment and inserted together; no browser page data is cached persistently for popup performance.
 
 Diff snapshots report changed text plus the current reference map, so omitted unchanged nodes never leave the agent with invalid stale IDs.
+
+Hover and drag share click's visibility/hit-testing and fresh backend-node references. Drags use bounded mouse movement and Chrome's drag interception/events for native HTML5 payloads, falling back to the same pointer gesture when no HTML5 drag is produced. File drag payloads are refused. Mouse release/interception cleanup never starts another drag or reattaches a revoked debugger.
+
+Plain text extraction returns a bounded rendered body/subtree without reading input values. Screenshots can capture the viewport, a full-page clip or an element box, with pixel/dimension and message-size limits. These operations do not enable general JavaScript evaluation.
+
+Network capture is explicitly enabled per authorized tab and records at most 100 HTTP(S) request metadata entries in memory. It strips URL query/fragment/credential information and does not store request headers, cookies, post data or response bodies. Stop retains the bounded records for inspection; release/revocation/debugger detach clears them. There is no persistent cross-tab index.
 
 ## Recovery
 

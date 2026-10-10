@@ -19,7 +19,11 @@ TabBridge is an independent, local browser automation toolkit for Codex CLI and 
 - Activate an authorized tab and focus its Chrome window, restoring a minimized window when a page needs foreground rendering or a user handoff.
 - Read compact accessibility snapshots, use element references, and request state differences.
 - Click, fill, select, press keys, scroll, navigate, wait for text, and inspect JavaScript dialogs.
-- Capture viewport PNGs and read bounded in-memory console messages.
+- Hover menus and drag between current element refs using HTML5 or pointer input.
+- Use modifier key combinations and select explicit local files in file inputs.
+- Read bounded rendered page text, optionally from a current element ref.
+- Capture viewport, full-page or element PNGs and read bounded in-memory console messages.
+- Explicitly capture up to 100 recent HTTP(S) request metadata records for troubleshooting.
 - Batch predictable actions and return a fresh snapshot. Partial failures identify completed steps.
 - Opt into arbitrary JavaScript evaluation for development, independently from ordinary browsing.
 - Reconnect after the native host exits. Never automatically replay a write with an uncertain outcome.
@@ -108,6 +112,30 @@ node bin/tabbridge.mjs close 456 --session demo
 
 Run `tabbridge help` (or `node bin/tabbridge.mjs help`) for command syntax, and `tools` for complete MCP tool schemas. `--json` accepts structured parameters for batches and advanced operations.
 
+### Menus, files, reading and diagnostics
+
+Use the actual refs returned by the latest snapshot:
+
+```sh
+node bin/tabbridge.mjs hover 123 s1:e7 --session research
+node bin/tabbridge.mjs snapshot 123 --session research
+# Drag only between refs from that current snapshot:
+node bin/tabbridge.mjs drag 123 s2:e8 s2:e12 --session research
+node bin/tabbridge.mjs press 123 Control+A --session research
+node bin/tabbridge.mjs read 123 --json '{"maxChars":12000}' --session research
+node bin/tabbridge.mjs screenshot 123 --full-page --out page.png --session research
+node bin/tabbridge.mjs screenshot 123 --json '{"ref":"s2:e8"}' --out element.png --session research
+# Selecting files can trigger an immediate website upload. Authorize the destination/files first.
+node bin/tabbridge.mjs upload 123 s2:e15 /absolute/path/to/approved-file.txt --session research
+node bin/tabbridge.mjs network 123 --json '{"action":"start"}' --session research
+node bin/tabbridge.mjs network 123 --session research
+node bin/tabbridge.mjs network 123 --json '{"action":"stop"}' --session research
+```
+
+`read` returns rendered text with a truncation flag, up to 32,000 characters. It does not traverse out-of-process frames. `upload` accepts up to 16 absolute local file paths; use `--json '{"files":[]}'` with a file-input ref to clear the selection. It selects files without pressing a separate submit button, but sites may upload on selection.
+
+Network capture is explicit and bounded, omits headers/bodies and removes queries/fragments/credentials from URLs. Request paths can still contain private information. Capture is cleared on release, revocation or debugger detach; a stop retains its bounded records until then. Screenshot limits are 16,384 pixels per side, 32 million pixels and the existing image-message size cap. Choose `fullPage` or an element ref rather than combining them. See the [feature comparison](docs/FEATURE_COMPARISON.md) for the scope relative to other browser MCP projects.
+
 ### Foreground dialogs and user handoffs
 
 `browser_activate` (CLI: `activate TAB`) selects the target tab and brings its Chrome window forward. It uses the same tab grants, exclusions and session ownership as other actions; JavaScript evaluation is not required. Snapshots report `active` and `windowFocused` so agents can distinguish a selected tab from a focused browser window.
@@ -169,9 +197,9 @@ Use [issues](https://github.com/cjiewong/tabbridge/issues) for reproducible bugs
 ## Known limits
 
 - This release is not feature parity with ChatGPT's browser integration. Side chat, official tab mentions and ChatGPT history synchronization are outside scope.
-- Out-of-process/cross-origin iframe element targeting, file uploads/download management, drag-and-drop, mobile emulation and persistent DOM references across navigation are not yet supported as dedicated tools.
+- Out-of-process/cross-origin iframe element targeting, download management, remote-file uploads, native file chooser handling, mobile emulation and persistent DOM references across navigation are not yet supported as dedicated tools.
 - Snapshot refs expire on the next snapshot or navigation. Diff output includes a fresh reference map.
-- Screenshots currently capture the viewport. Chrome debug-attachment conflicts and protected targets produce explicit errors.
+- Drags require both refs in one viewport; file dragging is unsupported. Chrome debug-attachment conflicts and protected targets produce explicit errors.
 - A timeout does not prove a write failed. Inspect the page before retrying; batch errors can mean partial completion.
 - Agents remain responsible for obtaining user authorization for consequential actions. A tab grant is permission to access the page, not permission to purchase, publish, delete data or change credentials.
 

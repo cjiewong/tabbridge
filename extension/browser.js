@@ -1,4 +1,6 @@
 import { fail, webURL } from './policy.js';
+import { keyEvent } from './keys.js';
+import { network, recordNetwork, clearNetwork } from './network.js';
 
 const attachments = new Map();
 export const events = new Map();
@@ -6,14 +8,18 @@ export const dialogs = new Map();
 export const snapshots = new Map();
 const refs = new Map();
 let generation = 0;
+const dragListeners = new Map();
 
 export function invalidate(tabId) { snapshots.delete(tabId); refs.delete(tabId); }
 export async function detach(tabId) {
   attachments.delete(tabId); invalidate(tabId); events.delete(tabId); dialogs.delete(tabId);
+  clearNetwork(tabId); dragListeners.get(tabId)?.(null); dragListeners.delete(tabId);
   try { await chrome.debugger.detach({ tabId }); } catch {}
 }
-chrome.debugger.onDetach.addListener(source => { attachments.delete(source.tabId); invalidate(source.tabId); });
+chrome.debugger.onDetach.addListener(source => { attachments.delete(source.tabId); invalidate(source.tabId); clearNetwork(source.tabId); dragListeners.get(source.tabId)?.(null); });
 chrome.debugger.onEvent.addListener((source, method, params) => {
+  if (method.startsWith('Network.')) recordNetwork(source.tabId, method, params);
+  if (method === 'Input.dragIntercepted') dragListeners.get(source.tabId)?.(params.data);
   if (method === 'Page.javascriptDialogOpening') dialogs.set(source.tabId, { type: params.type, message: params.message, defaultPrompt: params.defaultPrompt });
   if (method === 'Page.javascriptDialogClosed') dialogs.delete(source.tabId);
   if (method === 'Page.frameNavigated' && !params.frame?.parentId) invalidate(source.tabId);
@@ -91,8 +97,11 @@ export async function snapshot(tabId, { diff = false, maxNodes = 300 } = {}) {
   return { tabId, url: tab.url, title: tab.title, active: tab.active, windowFocused: window.focused, snapshotId: id, truncated, ...(changes ? { changes, refs: rows.filter(r => r.ref && !/^\s*(StaticText|RootWebArea)/.test(r.text)) } : { text: full }) };
 }
 
-export async function click(tabId, { ref }) {
-  await elementCall(tabId, ref, function () { if (this.disabled || this.getAttribute('aria-disabled') === 'true') throw new Error('Element is disabled'); this.scrollIntoView({ block: 'center', inline: 'center' }); });
+async function pointFor(tabId, ref, { enabled = false, scroll = true } = {}) {
+  await elementCall(tabId, ref, function (enabled, scroll) {
+    if (enabled && (this.disabled || this.getAttribute('aria-disabled') === 'true')) throw new Error('Element is disabled');
+    if (scroll) this.scrollIntoView({ block: 'center', inline: 'center' });
+  }, [enabled, scroll]);
   const record = refs.get(tabId).get(ref);
   const { quads } = await cdp(tabId, 'DOM.getContentQuads', { backendNodeId: record.backendNodeId });
   if (!quads?.length) fail('NOT_VISIBLE', 'Element has no visible box');
@@ -102,9 +111,49 @@ export async function click(tabId, { ref }) {
     return !!el && (el === this || this.contains(el));
   });
   if (!hittable) fail('OBSCURED', 'Element is covered. Inspect the page before clicking');
+  return { x, y };
+}
+
+export async function click(tabId, { ref }) {
+  const { x, y } = await pointFor(tabId, ref, { enabled: true });
   await cdp(tabId, 'Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', clickCount: 1 });
   await cdp(tabId, 'Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1 });
   return { clicked: ref };
+}
+
+export async function hover(tabId, { ref }) {
+  const point = await pointFor(tabId, ref);
+  await cdp(tabId, 'Input.dispatchMouseEvent', { type: 'mouseMoved', ...point });
+  return { hovered: ref };
+}
+
+export async function drag(tabId, { sourceRef, targetRef }) {
+  const start = await pointFor(tabId, sourceRef, { enabled: true });
+  const end = await pointFor(tabId, targetRef, { enabled: true, scroll: false });
+  let resolveDrag; let timer; let pressed = false;
+  const intercepted = new Promise(resolve => { resolveDrag = resolve; });
+  dragListeners.set(tabId, resolveDrag);
+  // Once attached, never reattach after a revoke/detach in the middle of a drag.
+  const send = (method, params) => chrome.debugger.sendCommand({ tabId }, method, params);
+  try {
+    await cdp(tabId, 'Input.setInterceptDrags', { enabled: true });
+    await send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...start });
+    await send('Input.dispatchMouseEvent', { type: 'mousePressed', ...start, button: 'left', buttons: 1, clickCount: 1 }); pressed = true;
+    for (let step = 1; step <= 8; step++) {
+      await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: start.x + (end.x - start.x) * step / 8, y: start.y + (end.y - start.y) * step / 8, button: 'left', buttons: 1 });
+    }
+    const data = await Promise.race([intercepted, new Promise(resolve => { timer = setTimeout(() => resolve(null), 750); })]);
+    if (data) {
+      if (data.files?.length || JSON.stringify(data).length > 100000) fail('DRAG_DATA_LIMIT', 'File drags and oversized drag payloads are unsupported; use upload for files');
+      for (const type of ['dragEnter', 'dragOver', 'drop']) await send('Input.dispatchDragEvent', { type, ...end, data });
+    }
+    await send('Input.dispatchMouseEvent', { type: 'mouseReleased', ...end, button: 'left', clickCount: 1 }); pressed = false;
+    return { dragged: sourceRef, droppedOn: targetRef, kind: data ? 'html5' : 'pointer' };
+  } finally {
+    clearTimeout(timer); dragListeners.delete(tabId);
+    if (pressed) await send('Input.dispatchMouseEvent', { type: 'mouseReleased', ...end, button: 'left', clickCount: 1 }).catch(() => {});
+    await send('Input.setInterceptDrags', { enabled: false }).catch(() => {});
+  }
 }
 
 export async function fill(tabId, { ref, text }) {
@@ -119,11 +168,9 @@ export async function fill(tabId, { ref, text }) {
   await cdp(tabId, 'Input.insertText', { text }); return { filled: ref, characters: text.length };
 }
 export async function press(tabId, { key }) {
-  const keys = { Enter: [13, 'Enter'], Tab: [9, 'Tab'], Escape: [27, 'Escape'], Backspace: [8, 'Backspace'], Delete: [46, 'Delete'], ArrowDown: [40, 'ArrowDown'], ArrowUp: [38, 'ArrowUp'], ArrowLeft: [37, 'ArrowLeft'], ArrowRight: [39, 'ArrowRight'], Space: [32, ' '] };
-  if (!keys[key]) fail('INVALID_PARAMS', `Supported keys: ${Object.keys(keys).join(', ')}`);
-  const [code, name] = keys[key];
-  await cdp(tabId, 'Input.dispatchKeyEvent', { type: 'keyDown', key: name, code: key, windowsVirtualKeyCode: code, ...(key === 'Enter' ? { text: '\r' } : key === 'Space' ? { text: ' ' } : {}) });
-  await cdp(tabId, 'Input.dispatchKeyEvent', { type: 'keyUp', key: name, code: key, windowsVirtualKeyCode: code }); return { pressed: key };
+  const { text, commands, ...event } = keyEvent(key);
+  await cdp(tabId, 'Input.dispatchKeyEvent', { type: 'keyDown', ...event, ...(text !== undefined ? { text } : {}), ...(commands ? { commands } : {}) });
+  await cdp(tabId, 'Input.dispatchKeyEvent', { type: 'keyUp', ...event }); return { pressed: key };
 }
 export async function select(tabId, { ref, value }) {
   if (typeof value !== 'string') fail('INVALID_PARAMS', 'value must be a string');
@@ -137,10 +184,51 @@ export async function select(tabId, { ref, value }) {
 export async function runAction(method, tabId, params, settings) {
   switch (method) {
     case 'snapshot': return snapshot(tabId, params);
+    case 'read': {
+      const maxChars = params.maxChars ?? 12000;
+      if (!Number.isInteger(maxChars) || maxChars < 1 || maxChars > 32000) fail('INVALID_PARAMS', 'maxChars must be 1–32000');
+      let content;
+      if (params.ref !== undefined) {
+        content = await elementCall(tabId, params.ref, function (limit) {
+          if (!this.getClientRects().length || getComputedStyle(this).visibility !== 'visible') throw new Error('Element is not visible');
+          const text = String(this.innerText || '');
+          return { text: text.slice(0, limit), truncated: text.length > limit };
+        }, [maxChars]);
+      } else {
+        const result = await cdp(tabId, 'Runtime.evaluate', { expression: `(() => { const text = document.body ? document.body.innerText : ''; return { text: text.slice(0, ${maxChars}), truncated: text.length > ${maxChars} }; })()`, returnByValue: true });
+        content = result.result.value;
+      }
+      const tab = await chrome.tabs.get(tabId);
+      return { tabId, url: tab.url, title: tab.title, ...content };
+    }
     case 'click': return click(tabId, params);
+    case 'hover': return hover(tabId, params);
+    case 'drag': return drag(tabId, params);
     case 'fill': return fill(tabId, params);
     case 'press': return press(tabId, params);
     case 'select': return select(tabId, params);
+    case 'upload': {
+      if (!Array.isArray(params.files) || params.files.length > 16 || params.files.some(file => typeof file !== 'string' || !file.startsWith('/') || file.length > 4096 || file.includes('\0'))) fail('INVALID_PARAMS', 'files must be an array of up to 16 absolute local paths');
+      await elementCall(tabId, params.ref, function (count) {
+        if (this.tagName !== 'INPUT' || this.type !== 'file' || this.disabled) throw new Error('Element is not an enabled file input');
+        if (!this.multiple && count > 1) throw new Error('This file input accepts only one file');
+      }, [params.files.length]);
+      const record = refs.get(tabId)?.get(params.ref);
+      if (!record) fail('STALE_REF', 'Get a fresh snapshot before selecting files');
+      if (params.files.length) {
+        await cdp(tabId, 'DOM.setFileInputFiles', { backendNodeId: record.backendNodeId, files: params.files });
+      } else {
+        await elementCall(tabId, params.ref, function () {
+          if (this.files.length) {
+            this.value = '';
+            this.dispatchEvent(new Event('input', { bubbles: true }));
+            this.dispatchEvent(new Event('change', { bubbles: true }));
+          }
+        });
+      }
+      return { selectedFiles: params.files.length };
+    }
+    case 'network': return network(tabId, params, cdp);
     case 'navigate': {
       const url = webURL(params.url).href; invalidate(tabId);
       const result = await cdp(tabId, 'Page.navigate', { url });
@@ -158,7 +246,22 @@ export async function runAction(method, tabId, params, settings) {
       await cdp(tabId, 'Input.dispatchMouseEvent', { type: 'mouseWheel', x: 200, y: 200, deltaX: 0, deltaY }); return { scrolled: deltaY };
     }
     case 'screenshot': {
-      const result = await cdp(tabId, 'Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
+      if (params.fullPage !== undefined && typeof params.fullPage !== 'boolean') fail('INVALID_PARAMS', 'fullPage must be boolean');
+      if (params.fullPage && params.ref !== undefined) fail('INVALID_PARAMS', 'Choose fullPage or an element ref, not both');
+      let clip;
+      if (params.ref !== undefined) {
+        clip = await elementCall(tabId, params.ref, function () {
+          const box = this.getBoundingClientRect();
+          if (!this.getClientRects().length || !box.width || !box.height) throw new Error('Element has no visible box');
+          return { x: Math.max(0, box.x + window.scrollX), y: Math.max(0, box.y + window.scrollY), width: box.width, height: box.height, scale: 1 };
+        });
+      } else if (params.fullPage) {
+        const metrics = await cdp(tabId, 'Page.getLayoutMetrics');
+        const size = metrics.cssContentSize || metrics.contentSize;
+        clip = { x: 0, y: 0, width: Math.ceil(size.width), height: Math.ceil(size.height), scale: 1 };
+      }
+      if (clip && (!Number.isFinite(clip.width * clip.height) || clip.width <= 0 || clip.height <= 0 || clip.width > 16384 || clip.height > 16384 || clip.width * clip.height > 32000000)) fail('IMAGE_TOO_LARGE', 'Capture a smaller element; screenshots are limited to 16,384 pixels per side and 32 million pixels');
+      const result = await cdp(tabId, 'Page.captureScreenshot', { format: 'png', captureBeyondViewport: !!clip, ...(clip ? { clip } : {}) });
       if (result.data.length > 7_000_000) fail('IMAGE_TOO_LARGE', 'Screenshot is too large. Reduce the browser window size');
       return { mimeType: 'image/png', data: result.data };
     }

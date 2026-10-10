@@ -12,6 +12,10 @@ JavaScript evaluation can read and modify a granted page. It is disabled by defa
 
 `activate` selects an authorized tab and focuses its existing Chrome window, restoring it if minimized. It follows the same grant, origin and session checks as page actions. It changes the user's foreground view and may make sensitive page contents visible on screen; agents should use it only when the task needs foreground rendering or a handoff. It does not bypass website verification or browser security controls.
 
+`upload` passes user-authorized local files to a granted page's file input. The native host checks absolute paths and regular files, and the extension checks the current ref, input type, enabled state and multiple-file support. It does not grant broad filesystem discovery or submit a separate form, but the page can immediately upload selected files. Agents must obtain authorization for the exact files and website before selection. File contents are read by Chrome; paths are not a separate protection boundary against a trusted same-user process.
+
+`network` explicitly records request metadata for an authorized tab. Capture is bounded to 100 entries in memory, excludes headers/bodies and removes URL queries, fragments and credentials. URL paths and request outcomes may still be sensitive. Release, revocation and debugger detach clear capture; stopping retains its existing bounded records. Do not paste diagnostics publicly without reviewing them.
+
 **All web tabs** explicitly grants CLI/MCP access to every current and future HTTP(S) tab in the connected Chrome profile, including signed-in pages and cross-origin navigation. It persists across Chrome restarts. First use automatically assigns a tab to the requesting session; other sessions cannot steal it. This mode also permits closing user-owned tabs controlled by the requesting session; agents must follow the user's requested scope. With global access off, only agent-created tabs may be closed. Individual Block controls override global access for the lifetime of that tab/browser session. Turning off global access revokes global leases; valid manual grants and agent-owned tabs remain. Stop turns global access off too. Browser-internal URLs remain unsupported. This mode is broad access, not a site allowlist.
 
 ## Local trust
@@ -26,7 +30,7 @@ The extension controls access, not the business meaning of every click. CLI/MCP 
 
 Stop & revoke all prevents new commands and detaches debugging. It cannot undo a command that has already reached the page. On a timeout or interrupted write, inspect state before considering a retry. Do not automatically replay partial batches.
 
-Snapshots suppress password field values. Other visible content, console logs, screenshots and developer evaluation can contain sensitive data and are returned to the chosen agent/model. The project itself has no telemetry, analytics, cloud storage or model API calls. Review the data policies of the agent/model you connect.
+Snapshots suppress password field values, and `read` does not extract input values or hidden HTML. Other visible content, full-page/element screenshots, console/network diagnostics and developer evaluation can contain sensitive data and are returned to the chosen agent/model. The project itself has no telemetry, analytics, cloud storage or model API calls. Review the data policies of the agent/model you connect.
 
 ## Reporting
 

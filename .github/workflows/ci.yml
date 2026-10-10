@@ -59,11 +59,14 @@ jobs:
           sudo apt-get install --yes lsof
       - run: npm ci
       - run: npx playwright install --with-deps chromium
-      - name: Use the installed Chrome sandbox on Linux
+      - name: Configure the matching Chrome for Testing sandbox on Linux
         if: runner.os == 'Linux'
         run: |
-          test -u /opt/google/chrome/chrome-sandbox
-          echo "CHROME_DEVEL_SANDBOX=/opt/google/chrome/chrome-sandbox" >> "$GITHUB_ENV"
+          TABBRIDGE_SANDBOX="$(node --input-type=module -e 'import path from "node:path"; import { chromium } from "playwright"; console.log(path.join(path.dirname(chromium.executablePath()), "chrome_sandbox"));')"
+          test -f "$TABBRIDGE_SANDBOX"
+          sudo chown root:root "$TABBRIDGE_SANDBOX"
+          sudo chmod 4755 "$TABBRIDGE_SANDBOX"
+          echo "CHROME_DEVEL_SANDBOX=$TABBRIDGE_SANDBOX" >> "$GITHUB_ENV"
       - run: npm run test:e2e
 
   package:
