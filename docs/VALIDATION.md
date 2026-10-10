@@ -39,6 +39,8 @@ Latest local validation on 2026-10-10 used macOS (Apple Silicon), Node.js 25.8.1
 
 The foreground fixture launches its own disposable Chrome process and attaches the test driver to an ephemeral loopback debugging endpoint with `noDefaults: true`. This avoids synthetic focus/visibility overrides and does not disable Chrome's sandbox. Production TabBridge transport remains Native Messaging and a private Unix socket; it does not expose a debugging port.
 
+Both E2E browser fixtures enable Chrome's sandbox. Ubuntu CI uses the runner's installed Chrome sandbox helper with a process-local `CHROME_DEVEL_SANDBOX` setting; it does not disable AppArmor or the browser sandbox.
+
 ## Scope of evidence
 
 These are local functional tests, not a claim of feature parity, a formal security audit or a long-term availability benchmark. Windows is unsupported. Linux path selection is unit-tested, but Linux browser/host behavior has not yet been validated on a Linux host. Ordinary-profile installation still requires the user to load the unpacked extension and explicitly select its access mode.

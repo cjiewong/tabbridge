@@ -22,7 +22,7 @@ test('activation reveals a real background dialog without focus emulation', { ti
   const previousHome = process.env.TABBRIDGE_HOME;
   process.env.TABBRIDGE_HOME = path.join(temporary, 'bridge');
   const server = http.createServer((_req, response) => { response.setHeader('Content-Type', 'text/html'); response.end(fixture); });
-  let processChrome; let browser; let stderr = '';
+  let processChrome; let browser; let stderr = ''; let launchError;
   try {
     const installed = await setup({ manifestDir: path.join(profile, 'NativeMessagingHosts') });
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -35,10 +35,12 @@ test('activation reveals a real background dialog without focus emulation', { ti
       '--no-first-run', '--no-default-browser-check',
       ...(process.env.TABBRIDGE_TEST_HEADED === '1' ? [] : ['--headless=new']), 'about:blank'
     ], { stdio: ['ignore', 'ignore', 'pipe'] });
+    processChrome.on('error', error => { launchError = error; });
     processChrome.stderr.on('data', data => { stderr = (stderr + data).slice(-8000); });
     let endpoint;
     for (let attempt = 0; attempt < 100; attempt++) {
-      if (processChrome.exitCode !== null) throw new Error(`Disposable Chrome exited: ${stderr}`);
+      if (launchError) throw launchError;
+      if (processChrome.exitCode !== null || processChrome.signalCode !== null) throw new Error(`Disposable Chrome exited: ${stderr}`);
       try {
         const [port, target] = (await readFile(path.join(profile, 'DevToolsActivePort'), 'utf8')).trim().split('\n');
         endpoint = `ws://127.0.0.1:${port}${target}`; break;
@@ -83,7 +85,7 @@ test('activation reveals a real background dialog without focus emulation', { ti
     assert.deepEqual(await page.evaluate(() => ({ visibility: document.visibilityState, focused: document.hasFocus() })), { visibility: 'visible', focused: true });
   } finally {
     await browser?.close();
-    if (processChrome && processChrome.exitCode === null) {
+    if (processChrome?.pid && processChrome.exitCode === null && processChrome.signalCode === null) {
       processChrome.kill('SIGTERM');
       await new Promise(resolve => {
         const timeout = setTimeout(() => { processChrome.kill('SIGKILL'); resolve(); }, 5000);

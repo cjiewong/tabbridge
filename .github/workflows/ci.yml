@@ -59,6 +59,11 @@ jobs:
           sudo apt-get install --yes lsof
       - run: npm ci
       - run: npx playwright install --with-deps chromium
+      - name: Use the installed Chrome sandbox on Linux
+        if: runner.os == 'Linux'
+        run: |
+          test -u /opt/google/chrome/chrome-sandbox
+          echo "CHROME_DEVEL_SANDBOX=/opt/google/chrome/chrome-sandbox" >> "$GITHUB_ENV"
       - run: npm run test:e2e
 
   package:

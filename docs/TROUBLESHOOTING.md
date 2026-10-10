@@ -41,4 +41,6 @@ Install development dependencies with `npm ci` and the full Playwright browser w
 
 Use `TABBRIDGE_TEST_CHROME` only to choose a browser executable. The E2E suite always creates its own profile, native-host registration and local HTTP fixture. Do not point it at an ordinary browser profile. Set `TABBRIDGE_TEST_HEADED=1` to inspect its disposable window.
 
+On Ubuntu 23.10+, a downloaded Chrome for Testing build may need an installed sandbox helper because AppArmor restricts unprivileged user namespaces. CI uses the existing `/opt/google/chrome/chrome-sandbox` via the process-local `CHROME_DEVEL_SANDBOX` variable and enables Chromium's sandbox in both browser fixtures. Follow [Chromium's sandbox guidance](https://chromium.googlesource.com/chromium/src/+/main/docs/security/apparmor-userns-restrictions.md) if your Linux host has no helper. Do not disable the sandbox or global AppArmor protections to make a test pass.
+
 Report reproducible bugs using the issue template, including versions, access mode, sanitized error codes and a minimal public or local fixture. Report vulnerabilities through the [security policy](../SECURITY.md).

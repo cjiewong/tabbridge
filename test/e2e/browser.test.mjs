@@ -48,6 +48,7 @@ test('real extension + native host + CLI/MCP transport end to end', { timeout: 1
   const launchOptions = {
       ...(process.env.TABBRIDGE_TEST_CHROME ? { executablePath: process.env.TABBRIDGE_TEST_CHROME } : { channel: 'chromium' }),
       headless: process.env.TABBRIDGE_TEST_HEADED !== '1',
+      chromiumSandbox: true,
       args: [`--disable-extensions-except=${path.resolve('extension')}`, `--load-extension=${path.resolve('extension')}`],
       viewport: { width: 1000, height: 800 }
     };
