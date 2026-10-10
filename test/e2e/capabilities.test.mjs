@@ -177,6 +177,46 @@ test('expanded tools operate on local fixtures with authorization and bounded ou
         assert.notEqual(image.isError, true); assert.equal(image.content[0].type, 'image');
       } finally { await client.close(); }
     });
+    await t.test('revoking access during attachment prevents a late debugger attachment and capture', async () => {
+      const revocationPage = await context.newPage(); await revocationPage.goto(url + 'revocation');
+      const target = await popup.evaluate(async url => {
+        const tab = (await chrome.tabs.query({})).find(tab => tab.url === url);
+        await chrome.runtime.sendMessage({ type: 'ui.grant', tabId: tab.id }); return tab.id;
+      }, url + 'revocation');
+      await call('claim', { tabId: target });
+      const worker = context.serviceWorkers().find(worker => worker.url().startsWith(`chrome-extension://${installed.extensionId}/`));
+      assert.ok(worker);
+      await worker.evaluate(tabId => {
+        const original = chrome.debugger.attach.bind(chrome.debugger);
+        globalThis.restoreAttach = () => { chrome.debugger.attach = original; delete globalThis.releaseAttach; };
+        chrome.debugger.attach = async (...args) => {
+          if (args[0].tabId === tabId) await new Promise(resolve => { globalThis.releaseAttach = resolve; });
+          return original(...args);
+        };
+      }, target);
+      try {
+        const pending = call('network', { tabId: target, action: 'start' });
+        const denied = assert.rejects(pending, { code: 'CANCELLED' });
+        for (let attempt = 0; attempt < 50; attempt++) {
+          if (await worker.evaluate(() => typeof globalThis.releaseAttach === 'function')) break;
+          await new Promise(resolve => setTimeout(resolve, 50));
+        }
+        assert.equal(await worker.evaluate(() => typeof globalThis.releaseAttach), 'function');
+        const revoked = await popup.evaluate(tabId => chrome.runtime.sendMessage({ type: 'ui.revoke', tabId }), target);
+        assert.equal(revoked.ok, true);
+        await worker.evaluate(() => globalThis.releaseAttach());
+        await denied;
+        const stillAttached = await popup.evaluate(async tabId => {
+          try { await chrome.debugger.sendCommand({ tabId }, 'Runtime.evaluate', { expression: '1', returnByValue: true }); return true; }
+          catch { return false; }
+        }, target);
+        assert.equal(stillAttached, false);
+        await assert.rejects(call('network', { tabId: target }), { code: 'TAB_NOT_GRANTED' });
+      } finally {
+        await worker.evaluate(() => { if (globalThis.releaseAttach) globalThis.releaseAttach(); globalThis.restoreAttach(); });
+        await revocationPage.close();
+      }
+    });
   } finally {
     await context?.close(); await new Promise(resolve => server.close(resolve));
     if (previousHome === undefined) delete process.env.TABBRIDGE_HOME; else process.env.TABBRIDGE_HOME = previousHome;

@@ -8,7 +8,7 @@ Latest local validation on 2026-10-10 used macOS (Apple Silicon), Node.js 25.8.1
 - 14 unit/MCP/distribution tests: fragmented framing, malformed/truncated frames, request validation, independent lease/origin checks, official MCP SDK negotiation, malformed tool arguments (including types, numeric bounds, prototype-named fields and nested batches), MCP lifecycle/input limits, platform registration paths, isolated setup/uninstall, repeatable archives, stale ZIP entry removal and rejection of symlinked files/directories.
 - Actual npm tarball extraction and CLI/setup/uninstall smoke check without runtime dependencies or a browser connection.
 - GitHub Actions workflow checked with actionlint 1.7.12; issue forms and Dependabot YAML parsed locally.
-- 35 real-browser checks within the E2E suite (37 Node test results including the two parent suites):
+- 36 real-browser checks within the E2E suite (38 Node test results including the two parent suites):
   1. Chrome extension → Native Messaging host handshake.
   2. Unshared tabs remain absent from agent discovery; new tabs disabled by default.
   3. Explicit claim, session isolation, user-tab close refusal and origin scope.
@@ -44,6 +44,7 @@ Latest local validation on 2026-10-10 used macOS (Apple Silicon), Node.js 25.8.1
   33. Full-page and element images have their expected PNG dimensions; conflicting capture options are rejected.
   34. Explicit network capture records success, HTTP failure and transport failure; strips synthetic secrets, bounds the buffer to 100 requests and clears it on release.
   35. MCP SDK receives the new rendered-text and full-page screenshot results using the published tool schemas.
+  36. Revoking a grant while Chrome attachment is pending cancels the action, detaches the late attachment and prevents capture or subsequent access.
 
 The foreground fixture launches its own disposable Chrome process and attaches the test driver to an ephemeral loopback debugging endpoint with `noDefaults: true`. This avoids synthetic focus/visibility overrides and does not disable Chrome's sandbox. Production TabBridge transport remains Native Messaging and a private Unix socket; it does not expose a debugging port.
 
@@ -51,6 +52,8 @@ The E2E browser fixtures enable Chrome's sandbox. Ubuntu CI configures the match
 
 ## Scope of evidence
 
-These are local functional tests, not a claim of feature parity, a formal security audit or a long-term availability benchmark. Windows is unsupported. Linux path selection is unit-tested, but Linux browser/host behavior has not yet been validated on a Linux host. Ordinary-profile installation still requires the user to load the unpacked extension and explicitly select its access mode.
+These are functional tests, not a claim of feature parity, a formal security audit or a long-term availability benchmark. Windows is unsupported. Ordinary-profile installation still requires the user to load the unpacked extension and explicitly select its access mode.
 
-The checked-in GitHub Actions workflow defines Node.js 22/24 checks on macOS/Ubuntu, E2E jobs and release artifacts. It has been linted locally; a completed hosted run is still needed to establish Ubuntu and Node.js 24 CI evidence. Branch protection is a separate repository setting. Private vulnerability reporting was enabled and verified through the GitHub API.
+Hosted [CI run for ef58380](https://github.com/cjiewong/tabbridge/actions/runs/38025247942) passed on 2026-10-10: Node.js 22/24 unit/package checks on macOS and Ubuntu, real-browser suites on both operating systems, and release artifact generation. That commit includes the expanded capabilities and sandbox configuration; the subsequent in-flight attachment/revocation regression was also verified locally. Consult [Actions](https://github.com/cjiewong/tabbridge/actions) for the corresponding newer commit's result rather than treating the earlier run as evidence for untested later changes.
+
+Branch protection is a separate repository setting. Private vulnerability reporting was enabled and verified through the GitHub API.

@@ -46,6 +46,7 @@ Network capture is explicitly enabled per authorized tab and records at most 100
 - Requests expire before entering an execution queue, preventing delayed queued work from starting after the host's deadline.
 - Disconnecting a CLI/MCP client cancels its queued commands and the remaining steps of its batch. Already-dispatched browser actions cannot be rolled back.
 - Batches stop at the first failure and report how many steps completed. Expiration of an in-flight browser action cannot undo it.
+- Revocation/debugger detach invalidates the active action scope. A late attachment is detached, and later commands in that action cannot reattach the debugger or resume after revocation.
 - No website contents, form values or screenshots are persisted by the host. Explicit CLI screenshots are written only to the requested path.
 
 ## Source provenance

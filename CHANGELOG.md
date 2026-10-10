@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Cancel in-flight action scopes on revocation/detach and refuse late debugger attachments, with a real-browser regression that revokes a grant while attachment is pending.
 - Add rendered-text reading, hover, HTML5/pointer drag, local file selection, modifier key combinations, full-page/element screenshots and explicit bounded network metadata capture, following a documented comparison with Chrome MCP and Chrome DevTools MCP.
 - Validate upload paths in the native host, select files without duplicate change events and clear file inputs using the platform's supported empty value.
 - Keep request headers/bodies out of network capture, redact URL queries/fragments/credentials and clear recordings on release/revocation/detach.

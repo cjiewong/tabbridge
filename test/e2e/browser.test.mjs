@@ -316,18 +316,17 @@ test('real extension + native host + CLI/MCP transport end to end', { timeout: 1
       assert.match((await call('snapshot', { tabId: globalTabId })).text, /Next page/);
       await popup.getByRole('button', { name: 'Revoke Next', exact: true }).click();
     });
-    await t.test('revoking global access stops queued actions on globally claimed tabs', async () => {
+    await t.test('revoking global access cancels the active wait and stops queued actions', async () => {
       await popup.getByRole('checkbox', { name: /^All web tabs/ }).check();
       const fresh = await call('snapshot', { tabId });
       const unblockText = 'Queue released after revocation';
       const blockerDone = call('wait', { tabId, text: unblockText, timeoutMs: 12000 }).catch(e => e);
       await new Promise(r => setTimeout(r, 100));
       const queuedResult = call('click', { tabId, ref: refFor(fresh, 'button', 'Save') }).catch(e => e);
-      // Keep the queue blocked until revocation completes, independent of UI/runner speed.
+      // The queue is held until revocation cancels its active action.
       const changed = await popup.evaluate(() => chrome.runtime.sendMessage({ type: 'ui.settings', allowAllTabs: false }));
       assert.equal(changed.ok, true);
-      await userPage.evaluate(text => { document.querySelector('#result').textContent = text; }, unblockText);
-      assert.deepEqual(await blockerDone, { found: true });
+      assert.equal((await blockerDone).code, 'CANCELLED');
       const refused = await queuedResult;
       assert.equal(refused.code, 'TAB_NOT_GRANTED');
       assert.equal(await userPage.evaluate(() => window.saves || 0), 0);

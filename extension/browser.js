@@ -3,6 +3,7 @@ import { keyEvent } from './keys.js';
 import { network, recordNetwork, clearNetwork } from './network.js';
 
 const attachments = new Map();
+const actionScopes = new Map();
 export const events = new Map();
 export const dialogs = new Map();
 export const snapshots = new Map();
@@ -12,11 +13,15 @@ const dragListeners = new Map();
 
 export function invalidate(tabId) { snapshots.delete(tabId); refs.delete(tabId); }
 export async function detach(tabId) {
+  if (actionScopes.has(tabId)) actionScopes.get(tabId).active = false;
   attachments.delete(tabId); invalidate(tabId); events.delete(tabId); dialogs.delete(tabId);
   clearNetwork(tabId); dragListeners.get(tabId)?.(null); dragListeners.delete(tabId);
   try { await chrome.debugger.detach({ tabId }); } catch {}
 }
-chrome.debugger.onDetach.addListener(source => { attachments.delete(source.tabId); invalidate(source.tabId); clearNetwork(source.tabId); dragListeners.get(source.tabId)?.(null); });
+chrome.debugger.onDetach.addListener(source => {
+  if (actionScopes.has(source.tabId)) actionScopes.get(source.tabId).active = false;
+  attachments.delete(source.tabId); invalidate(source.tabId); clearNetwork(source.tabId); dragListeners.get(source.tabId)?.(null);
+});
 chrome.debugger.onEvent.addListener((source, method, params) => {
   if (method.startsWith('Network.')) recordNetwork(source.tabId, method, params);
   if (method === 'Input.dragIntercepted') dragListeners.get(source.tabId)?.(params.data);
@@ -31,17 +36,25 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
 });
 
 export async function cdp(tabId, method, params = {}) {
+  const scope = actionScopes.get(tabId);
+  if (scope && !scope.active) fail('CANCELLED', 'Tab access or debugging ended during this action; inspect before continuing');
   if (!attachments.has(tabId)) {
     const pending = (async () => {
       try { await chrome.debugger.attach({ tabId }, '1.3'); }
       catch (e) { fail('ATTACH_FAILED', `Cannot attach to this tab: ${e.message}`); }
+      if ((scope && !scope.active) || attachments.get(tabId) !== pending) {
+        await chrome.debugger.detach({ tabId }).catch(() => {});
+        fail('CANCELLED', 'Tab access ended while attaching; no browser action was dispatched');
+      }
       await chrome.debugger.sendCommand({ tabId }, 'Page.enable');
+      if (scope && !scope.active) fail('CANCELLED', 'Tab access ended while initializing debugging');
       await chrome.debugger.sendCommand({ tabId }, 'Runtime.enable');
     })();
     attachments.set(tabId, pending);
     try { await pending; } catch (e) { attachments.delete(tabId); throw e; }
   }
   await attachments.get(tabId);
+  if (scope && !scope.active) fail('CANCELLED', 'Tab access or debugging ended during this action; inspect before continuing');
   return chrome.debugger.sendCommand({ tabId }, method, params);
 }
 
@@ -134,7 +147,10 @@ export async function drag(tabId, { sourceRef, targetRef }) {
   const intercepted = new Promise(resolve => { resolveDrag = resolve; });
   dragListeners.set(tabId, resolveDrag);
   // Once attached, never reattach after a revoke/detach in the middle of a drag.
-  const send = (method, params) => chrome.debugger.sendCommand({ tabId }, method, params);
+  const send = async (method, params) => {
+    if (!actionScopes.get(tabId)?.active) fail('CANCELLED', 'Tab access ended during the drag; inspect the page before continuing');
+    return chrome.debugger.sendCommand({ tabId }, method, params);
+  };
   try {
     await cdp(tabId, 'Input.setInterceptDrags', { enabled: true });
     await send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...start });
@@ -182,6 +198,12 @@ export async function select(tabId, { ref, value }) {
 }
 
 export async function runAction(method, tabId, params, settings) {
+  const scope = { active: true }; actionScopes.set(tabId, scope);
+  try { return await performAction(method, tabId, params, settings); }
+  finally { if (actionScopes.get(tabId) === scope) actionScopes.delete(tabId); }
+}
+
+async function performAction(method, tabId, params, settings) {
   switch (method) {
     case 'snapshot': return snapshot(tabId, params);
     case 'read': {
