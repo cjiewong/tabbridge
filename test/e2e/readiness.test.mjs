@@ -201,7 +201,15 @@ test('initial navigation and DOM readiness are bounded and preserve authorizatio
         return tab.url === url && tab.status === 'complete' && leases[tabId] && !leases[tabId].openingUrl;
       }, { tabId: own.tabId, url: base + '/committed' });
       await popup.evaluate(tabId => chrome.tabs.update(tabId, { url: 'about:blank' }), own.tabId);
-      await popup.waitForFunction(async tabId => !(await chrome.runtime.sendMessage({ type: 'ui.status' })).leases[tabId], own.tabId);
+      // Wait for the actual blank navigation and durable revocation, not just
+      // one UI status response while Chrome is still reporting a transition.
+      await popup.waitForFunction(async tabId => {
+        const [tab, state, stored] = await Promise.all([
+          chrome.tabs.get(tabId), chrome.runtime.sendMessage({ type: 'ui.status' }), chrome.storage.session.get('leases')
+        ]);
+        return tab.url === 'about:blank' && tab.status === 'complete' && !tab.pendingUrl && !state.leases[tabId] && !stored.leases?.[tabId];
+      }, own.tabId);
+      assert.ok(!(await call('tabs')).tabs.some(tab => tab.tabId === own.tabId));
       await assert.rejects(call('read', { tabId: own.tabId, timeoutMs: 50 }), { code: 'TAB_NOT_GRANTED' });
       const blank = await popup.evaluate(() => chrome.tabs.create({ url: 'about:blank', active: false }));
       await assert.rejects(call('snapshot', { tabId: blank.id, timeoutMs: 50 }), { code: 'TAB_NOT_GRANTED' });
