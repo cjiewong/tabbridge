@@ -57,6 +57,7 @@ test('real extension + native host + CLI/MCP transport end to end', { timeout: 1
     const worker = context.serviceWorkers()[0] || await context.waitForEvent('serviceworker');
     await worker.evaluate(() => chrome.storage.local.set({ uiLanguage: 'en' }));
     let popup = await context.newPage(); await popup.goto(`chrome-extension://${installed.extensionId}/popup.html`);
+    await popup.evaluate(() => chrome.runtime.sendMessage({ type: 'ui.settings', quiet: false }));
     await popup.getByRole('button', { name: 'Connect', exact: true }).click();
     await t.test('native messaging handshake', async () => {
       await popup.getByRole('button', { name: 'Refresh', exact: true }).click();
@@ -145,7 +146,7 @@ test('real extension + native host + CLI/MCP transport end to end', { timeout: 1
       }, url + 'window');
       const client = new Client({ name: 'e2e-activation', version: '1.0.0' });
       try {
-        await popup.waitForFunction(async ({ tabId, url }) => (await chrome.tabs.get(tabId)).url === url, { tabId: secondWindow.tabId, url: url + 'window' });
+        await popup.waitForFunction(async ({ tabId, url }) => { const tab = await chrome.tabs.get(tabId); return tab.url === url && tab.status === 'complete' && !tab.pendingUrl; }, { tabId: secondWindow.tabId, url: url + 'window' });
         await popup.evaluate(async tabId => {
           const granted = await chrome.runtime.sendMessage({ type: 'ui.grant', tabId });
           if (!granted.ok) throw new Error(granted.error);

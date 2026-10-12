@@ -39,6 +39,7 @@ test('popup controls, live state and bilingual layout in a disposable profile', 
     const errors = [];
     popup.on('pageerror', error => errors.push(error.message));
     await popup.goto(`chrome-extension://${installed.extensionId}/popup.html`);
+    await popup.evaluate(() => chrome.runtime.sendMessage({ type: 'ui.settings', quiet: false }));
     await popup.getByRole('button', { name: 'Connect', exact: true }).click();
     await popup.waitForFunction(() => document.getElementById('status').textContent === 'Connected to local host');
     const pages = [];
@@ -185,6 +186,30 @@ test('popup controls, live state and bilingual layout in a disposable profile', 
       } finally { await popup.evaluate(() => window.restoreMessages()); }
       await popup.locator('#refresh').click(); await settle();
       assert.equal(await popup.locator('#error').isVisible(), false);
+    });
+    await t.test('quiet controls persist, gate scripting and expose optional focus emulation', async () => {
+      await popup.locator('#quiet').check(); await settle();
+      assert.equal((await call('status')).quiet, true);
+      await popup.locator('#advanced-settings > summary').click();
+      assert.equal(await popup.locator('#developer').isDisabled(), true);
+      assert.equal(await popup.locator('#focus-emulation').isEnabled(), true);
+      await popup.locator('#focus-emulation').check(); await settle();
+      assert.equal((await call('status')).focusEmulation, true);
+      assert.equal(await popup.locator('#emulation-badge').textContent(), '模拟已启用');
+      await popup.locator('#advanced-settings > summary').click();
+      await popup.reload(); await settle();
+      assert.equal(await popup.locator('#quiet').isChecked(), true);
+      assert.equal(await popup.locator('#emulation-badge').isVisible(), true);
+      await popup.locator('body').screenshot({ path: 'artifacts/popup-quiet-zh.png' });
+      await popup.locator('#language').selectOption('en');
+      await popup.locator('body').screenshot({ path: 'artifacts/popup-quiet-en.png' });
+      await popup.locator('#advanced-settings > summary').click();
+      await popup.locator('body').screenshot({ path: 'artifacts/popup-quiet-advanced.png' });
+      assert.equal(await popup.evaluate(() => document.documentElement.scrollHeight), 600);
+      assert.equal(await popup.evaluate(() => document.body.scrollWidth), 410);
+      await popup.locator('#focus-emulation').uncheck(); await settle();
+      await popup.locator('#advanced-settings > summary').click();
+      await popup.locator('#language').selectOption('zh');
     });
     await t.test('individual mode and fixed stop revoke backend access as displayed', async () => {
       await popup.getByRole('radio', { name: '逐个授权', exact: true }).check(); await settle();

@@ -3,6 +3,7 @@ import { keyEvent } from './keys.js';
 import { network, recordNetwork, clearNetwork } from './network.js';
 
 const attachments = new Map();
+const emulatedFocus = new Set();
 const actionScopes = new Map();
 export const events = new Map();
 export const dialogs = new Map();
@@ -14,13 +15,19 @@ const dragListeners = new Map();
 export function invalidate(tabId) { snapshots.delete(tabId); refs.delete(tabId); }
 export async function detach(tabId) {
   if (actionScopes.has(tabId)) actionScopes.get(tabId).active = false;
-  attachments.delete(tabId); invalidate(tabId); events.delete(tabId); dialogs.delete(tabId);
+  attachments.delete(tabId); emulatedFocus.delete(tabId); invalidate(tabId); events.delete(tabId); dialogs.delete(tabId);
   clearNetwork(tabId); dragListeners.get(tabId)?.(null); dragListeners.delete(tabId);
   try { await chrome.debugger.detach({ tabId }); } catch {}
 }
+export async function resetBrowserSessions() {
+  const ids = new Set([...attachments.keys(), ...actionScopes.keys(), ...emulatedFocus]);
+  // Invalidate all scopes synchronously before awaiting any detach.
+  for (const scope of actionScopes.values()) scope.active = false;
+  await Promise.all([...ids].map(detach));
+}
 chrome.debugger.onDetach.addListener(source => {
   if (actionScopes.has(source.tabId)) actionScopes.get(source.tabId).active = false;
-  attachments.delete(source.tabId); invalidate(source.tabId); clearNetwork(source.tabId); dragListeners.get(source.tabId)?.(null);
+  attachments.delete(source.tabId); emulatedFocus.delete(source.tabId); invalidate(source.tabId); clearNetwork(source.tabId); dragListeners.get(source.tabId)?.(null);
 });
 chrome.debugger.onEvent.addListener((source, method, params) => {
   if (method.startsWith('Network.')) recordNetwork(source.tabId, method, params);
@@ -38,6 +45,7 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
 function checkScope(scope) {
   if (scope && (!scope.active || scope.control?.cancelled)) fail('CANCELLED', 'Tab access, debugging or the client ended during this action; inspect before continuing');
   if (scope?.deadline && Date.now() >= scope.deadline) fail('EXPIRED', 'Request expired; no further browser command was dispatched');
+  scope?.checkInteraction?.();
 }
 function authorizeDocument(scope, url) {
   checkScope(scope);
@@ -78,6 +86,17 @@ export async function cdp(tabId, method, params = {}) {
       await chrome.debugger.sendCommand({ tabId }, 'Page.enable');
       await authorizeCommand(tabId, scope);
       await chrome.debugger.sendCommand({ tabId }, 'Runtime.enable');
+      if (scope?.settings.quiet && scope.settings.focusEmulation) {
+        await authorizeCommand(tabId, scope);
+        try { await chrome.debugger.sendCommand({ tabId }, 'Emulation.setFocusEmulationEnabled', { enabled: true }); }
+        catch (error) {
+          await chrome.debugger.detach({ tabId }).catch(() => {});
+          fail('FOCUS_EMULATION_UNAVAILABLE', `Background focus emulation failed; no foreground fallback was attempted: ${error.message}`);
+        }
+        try { await authorizeCommand(tabId, scope); }
+        catch (error) { await chrome.debugger.detach({ tabId }).catch(() => {}); throw error; }
+        emulatedFocus.add(tabId);
+      }
     })();
     attachments.set(tabId, pending);
     try { await pending; } catch (e) { attachments.delete(tabId); throw e; }
@@ -91,8 +110,10 @@ export async function cdp(tabId, method, params = {}) {
 
 const pageStateExpression = `({documentURL: location.href, readyState: document.readyState, domContentLoaded: document.readyState === 'complete' || (performance.getEntriesByType('navigation')[0]?.domContentLoadedEventEnd || 0) > 0, visibilityState: document.visibilityState, documentFocused: document.hasFocus()})`;
 function pageState(tab, documentState) {
-  return { loading: tab.status === 'loading', readyState: documentState.readyState, domContentLoaded: documentState.domContentLoaded, visibilityState: documentState.visibilityState, documentFocused: documentState.documentFocused, discarded: !!tab.discarded, frozen: !!tab.frozen,
-    ...(documentState.visibilityState === 'hidden' ? { renderHint: 'Background pages may defer rendering. If expected content is missing, explicitly activate this authorized tab and wait for that content; do not repeat a write' } : {}) };
+  const quiet = !!actionScopes.get(tab.id)?.settings.quiet;
+  const focusEmulated = emulatedFocus.has(tab.id);
+  return { loading: tab.status === 'loading', readyState: documentState.readyState, domContentLoaded: documentState.domContentLoaded, visibilityState: documentState.visibilityState, documentFocused: documentState.documentFocused, discarded: !!tab.discarded, frozen: !!tab.frozen, quiet, focusEmulated,
+    ...(focusEmulated ? { renderHint: 'Document visibility/focus is emulated. It is not evidence of real window or macOS desktop focus. Verify expected application content' } : documentState.visibilityState === 'hidden' ? { renderHint: quiet ? 'Background rendering may be deferred. Do not disturb prohibits activation; wait for expected content or report the blocker. The user may enable background focus emulation in the popup' : 'Background pages may defer rendering. If expected content is missing, explicitly activate this authorized tab and wait for that content; do not repeat a write' } : {}) };
 }
 async function waitForDocument(tabId, scope) {
   for (;;) {
@@ -100,7 +121,7 @@ async function waitForDocument(tabId, scope) {
     const tab = await chrome.tabs.get(tabId);
     checkScope(scope);
     authorizeDocument(scope, tab.url);
-    if (tab.discarded || tab.frozen) fail('FOREGROUND_REQUIRED', 'This tab is discarded or frozen. Explicitly activate the authorized tab, then wait for the expected content');
+    if (tab.discarded || tab.frozen) fail('FOREGROUND_REQUIRED', scope.settings.quiet ? 'This tab is discarded or frozen. Do not disturb prohibits foreground recovery. Report the blocker and let the user restore the tab manually' : 'This tab is discarded or frozen. Explicitly activate the authorized tab, then wait for the expected content');
     let state;
     try {
       const result = await cdp(tabId, 'Runtime.evaluate', { expression: pageStateExpression, returnByValue: true });
@@ -115,7 +136,7 @@ async function waitForDocument(tabId, scope) {
       authorizeDocument(scope, state.documentURL);
       if (state.domContentLoaded) return pageState(tab, state);
     }
-    if (Date.now() >= scope.observationDeadline) fail('READINESS_TIMEOUT', 'DOMContentLoaded did not finish in time. Retry only the read, or explicitly activate a background tab if the task needs foreground rendering');
+    if (Date.now() >= scope.observationDeadline) fail('READINESS_TIMEOUT', scope.settings.quiet ? 'DOMContentLoaded did not finish in the background. Do not disturb prohibits foreground recovery; report the blocker or retry only the read' : 'DOMContentLoaded did not finish in time. Retry only the read, or explicitly activate a background tab if the task needs foreground rendering');
     await new Promise(resolve => setTimeout(resolve, Math.min(50, scope.observationDeadline - Date.now())));
   }
 }
@@ -267,7 +288,7 @@ export async function runAction(method, tabId, params, settings, context = {}) {
   const timeout = params.timeoutMs ?? 8000;
   if (observing && (!Number.isInteger(timeout) || timeout < 0 || timeout > 12000)) fail('INVALID_PARAMS', 'timeoutMs must be 0–12000');
   if (method === 'wait' && (typeof params.text !== 'string' || params.text.length > 1000)) fail('INVALID_PARAMS', 'wait requires text up to 1000 characters');
-  const scope = { active: true, observing, ...context, observationDeadline: context.observationDeadline ?? Math.min(context.deadline ?? Infinity, Date.now() + timeout) }; actionScopes.set(tabId, scope);
+  const scope = { active: true, observing, settings, ...context, observationDeadline: context.observationDeadline ?? Math.min(context.deadline ?? Infinity, Date.now() + timeout) }; actionScopes.set(tabId, scope);
   try {
     if (observing) scope.pageState = await waitForDocument(tabId, scope);
     return await performAction(method, tabId, params, settings);
@@ -337,6 +358,12 @@ async function performAction(method, tabId, params, settings) {
     }
     case 'scroll': {
       const deltaY = params.deltaY ?? 600; if (!Number.isFinite(deltaY) || Math.abs(deltaY) > 10000) fail('INVALID_PARAMS', 'deltaY must be between -10000 and 10000');
+      if (settings.quiet) {
+        // A wheel acknowledgement may wait indefinitely on an unpainted
+        // background surface. Scroll the document once, without window focus.
+        const result = await cdp(tabId, 'Runtime.evaluate', { expression: `(() => { window.scrollBy({ top: ${deltaY}, behavior: 'instant' }); return { x: scrollX, y: scrollY }; })()`, returnByValue: true });
+        return { scrolled: deltaY, position: result.result.value, target: 'document' };
+      }
       await cdp(tabId, 'Input.dispatchMouseEvent', { type: 'mouseWheel', x: 200, y: 200, deltaX: 0, deltaY }); return { scrolled: deltaY };
     }
     case 'screenshot': {
@@ -370,7 +397,7 @@ async function performAction(method, tabId, params, settings) {
         await new Promise(r => setTimeout(r, Math.min(100, scope.observationDeadline - Date.now())));
       } while (Date.now() <= scope.observationDeadline);
       const state = await cdp(tabId, 'Runtime.evaluate', { expression: pageStateExpression, returnByValue: true });
-      fail('WAIT_TIMEOUT', state.result.value?.visibilityState === 'hidden' ? 'Text did not appear in this background tab. If the task requires it, explicitly activate this authorized tab and wait again; do not repeat a write' : 'Text did not appear; document readiness does not guarantee application content is ready'); break;
+      fail('WAIT_TIMEOUT', settings.quiet ? 'Expected content did not appear in the background. Do not disturb prohibits activation; report the blocker. Do not reload or replay a write to force progress' : state.result.value?.visibilityState === 'hidden' ? 'Text did not appear in this background tab. If the task requires it, explicitly activate this authorized tab and wait again; do not repeat a write' : 'Text did not appear; document readiness does not guarantee application content is ready'); break;
     }
     case 'dialog': {
       if (params.accept === undefined) return { dialog: dialogs.get(tabId) || null };
@@ -379,6 +406,7 @@ async function performAction(method, tabId, params, settings) {
     }
     case 'logs': return { logs: events.get(tabId) || [] };
     case 'evaluate': {
+      if (settings.quiet) fail('QUIET_MODE', 'Arbitrary JavaScript is blocked while Do not disturb is enabled');
       if (!settings.developer) fail('DEVELOPER_DISABLED', 'Enable JavaScript evaluation in the extension popup first');
       if (typeof params.expression !== 'string' || params.expression.length > 20000) fail('INVALID_PARAMS', 'expression must be a string up to 20,000 characters');
       const result = await cdp(tabId, 'Runtime.evaluate', { expression: params.expression, returnByValue: true, awaitPromise: true, timeout: 5000 });

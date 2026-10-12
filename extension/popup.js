@@ -51,7 +51,9 @@ function applyLanguage() {
 function connectionText() { return t(!state ? 'checking' : state.connected ? 'connected' : state.settings.enabled ? 'waiting' : 'disconnected'); }
 function renderBusy() {
   $('connect').disabled = mutationCount > 0 || stopping;
-  for (const id of ['shared-tabs', 'all-tabs', 'new-tabs', 'developer']) $(id).disabled = mutationCount > 0 || stopping || !state;
+  for (const id of ['shared-tabs', 'all-tabs', 'new-tabs', 'developer', 'quiet', 'focus-emulation']) $(id).disabled = mutationCount > 0 || stopping || !state;
+  $('developer').disabled ||= !!state?.settings.quiet;
+  $('focus-emulation').disabled ||= !state?.settings.quiet;
   for (const button of document.querySelectorAll('.tab button')) button.disabled = mutationCount > 0 || stopping;
   $('stop').textContent = t(stopping ? 'stopping' : 'stop');
   $('stop').disabled = stopping;
@@ -68,9 +70,14 @@ function renderState(nextState) {
     $('all-tabs').checked = allTabs;
     $('shared-tabs').checked = !allTabs;
     $('new-tabs').checked = state.settings.allowNewTabs;
-    $('developer').checked = state.settings.developer;
+    $('developer').checked = state.settings.developer && !state.settings.quiet;
+    $('quiet').checked = state.settings.quiet;
+    $('focus-emulation').checked = state.settings.quiet && state.settings.focusEmulation;
   }
-  $('developer-badge').hidden = !state.settings.developer;
+  $('developer-badge').hidden = !state.settings.developer || state.settings.quiet;
+  $('emulation-badge').hidden = !state.settings.quiet || !state.settings.focusEmulation;
+  $('quiet-hint').textContent = t(state.settings.quiet ? 'quietHint' : 'quietOffHint');
+  $('developer-hint').textContent = t(state.settings.quiet ? 'developerQuiet' : 'developerHint');
   $('access-hint').textContent = t(allTabs ? 'allHint' : 'individualHint');
   const inUse = Object.values(state.leases).filter(lease => lease.session).length;
   $('session-summary').textContent = t(inUse ? 'summary' : 'summaryNone', { count: inUse });
@@ -198,6 +205,8 @@ $('refresh').onclick = () => { actionError = null; void render(); };
 $('stop').onclick = () => action({ type: 'ui.stop' });
 for (const id of ['shared-tabs', 'all-tabs']) $(id).onchange = event => action({ type: 'ui.settings', allowAllTabs: event.target.value === 'all' });
 $('new-tabs').onchange = () => action({ type: 'ui.settings', allowNewTabs: $('new-tabs').checked });
+$('quiet').onchange = () => action({ type: 'ui.settings', quiet: $('quiet').checked });
+$('focus-emulation').onchange = () => action({ type: 'ui.settings', focusEmulation: $('focus-emulation').checked });
 $('developer').onchange = () => action({ type: 'ui.settings', developer: $('developer').checked });
 $('language').onchange = () => {
   languageChanged = true; language = $('language').value; applyLanguage();
@@ -213,7 +222,7 @@ document.addEventListener('keydown', event => { if (event.key === 'Escape' && !$
 $('copy-diagnostics').onclick = async () => {
   if (!state) return;
   // Counts and capability flags only: no page titles, URLs or session IDs.
-  const diagnostics = { version, connected: state.connected, enabled: state.settings.enabled, allowAllTabs: state.settings.allowAllTabs, allowNewTabs: state.settings.allowNewTabs, developer: state.settings.developer, webTabs: tabs?.length ?? null, inUse: Object.values(state.leases).filter(lease => lease.session).length };
+  const diagnostics = { version, connected: state.connected, enabled: state.settings.enabled, allowAllTabs: state.settings.allowAllTabs, allowNewTabs: state.settings.allowNewTabs, developer: state.settings.developer && !state.settings.quiet, quiet: state.settings.quiet, focusEmulation: state.settings.quiet && state.settings.focusEmulation, webTabs: tabs?.length ?? null, inUse: Object.values(state.leases).filter(lease => lease.session).length };
   try { await navigator.clipboard.writeText(JSON.stringify(diagnostics, null, 2)); $('copy-status').textContent = t('copied'); }
   catch { $('copy-status').textContent = t('copyFailed'); }
 };

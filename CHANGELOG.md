@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Default to user-controlled Do not disturb: block activation, arbitrary evaluation and closing a selected tab; create background tabs only in existing normal windows. Expose the effective policy through status and MCP guidance.
+- Add optional background focus emulation with explicit simulated-state metadata, failure without foreground fallback, cleanup on release/revoke/Stop and cancellation when preferences change.
+- Add bilingual popup controls and document-scroll behavior that avoids stalled background wheel acknowledgements; verify input, screenshots and rendering in a separate unfocused browser window without driver focus emulation.
+
 - Recheck cancellation across asynchronous tab lookups, report active access loss as cancellation before detach completes, and derive access-mode changes from the selected radio value.
 
 - Wait for initial/pending HTTP(S) navigation and DOMContentLoaded before snapshots, text reads, screenshots and text waits, using one bounded budget; preserve grants, cancellation and ownership while waiting.

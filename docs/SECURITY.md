@@ -18,6 +18,14 @@ JavaScript evaluation can read and modify a granted page. It is disabled by defa
 
 **All web tabs** explicitly grants CLI/MCP access to every current and future HTTP(S) tab in the connected Chrome profile, including signed-in pages and cross-origin navigation. It persists across Chrome restarts. First use automatically assigns a tab to the requesting session; other sessions cannot steal it. This mode also permits closing user-owned tabs controlled by the requesting session; agents must follow the user's requested scope. With global access off, only agent-created tabs may be closed. Individual Block controls override global access for the lifetime of that tab/browser session. Turning off global access revokes global leases; valid manual grants and agent-owned tabs remain. Stop turns global access off too. Browser-internal URLs remain unsupported. This mode is broad access, not a site allowlist.
 
+## Do not disturb
+
+Do not disturb defaults on. It blocks explicit activation, arbitrary JavaScript evaluation, closing selected tabs and opening a tab when no existing normal Chrome window is available. Only the user's extension UI can change it. It does not expand grants or allow a session to steal another session's tabs.
+
+Background focus emulation is a separate opt-in and changes the page's reported visibility/focus, potentially triggering normal site behavior. It is not a user gesture, permission approval or authentication bypass. Actual Chrome tab/window selection is reported separately. Disabling it, changing quiet policy, release, revocation, Stop or debugger detach clears the debugger override. Saved preferences persist; a previous developer opt-in resumes when quiet is disabled.
+
+This is a foreground-action policy, not a sandbox for all website side effects. A click may open a site window or browser UI. The mode does not suppress security prompts, guarantee silent downloads/audio, or isolate macOS Spaces. Agent instructions must still respect the user's task and report blockers rather than finding alternate ways to force foreground access.
+
 ## Local trust
 
 Native Messaging accepts only the TabBridge extension ID. The local bridge directory is mode 0700 and the Unix socket is mode 0600, owned by the current user. There is no TCP listener or remote relay. **Other processes running as the same OS user are trusted**; session labels are coordination primitives, not client authentication secrets. Do not forward the socket remotely.

@@ -91,7 +91,11 @@ footer { padding: 12px 18px; min-height: 58px; background: #edf3ee; display: fle
 .diagnostics-panel .hint { margin-top: 12px; }
 .diagnostics-panel code { display: block; margin: 8px 0 12px; padding: 8px; border-radius: 5px; background: #eff4f0; font-size: 11px; user-select: all; }
 #copy-status { min-height: 16px; margin-top: 5px; font-size: 11px; color: var(--muted); }
-@media (max-height: 440px) {
+@media (max-height: 530px) {
   main { overflow-y: auto; }
   .tab-list { flex-shrink: 0; min-height: 100px; }
 }
+
+#quiet-hint { font-size: 10px; margin-bottom: 4px; }
+main:has(#advanced-settings[open]) { overflow-y: auto; }
+main:has(#advanced-settings[open]) .tab-list { flex: none; min-height: 100px; }

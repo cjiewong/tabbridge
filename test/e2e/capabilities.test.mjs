@@ -62,6 +62,7 @@ test('expanded tools operate on local fixtures with authorization and bounded ou
     const worker = context.serviceWorkers()[0] || await context.waitForEvent('serviceworker');
     await worker.evaluate(() => chrome.storage.local.set({ uiLanguage: 'en' }));
     const popup = await context.newPage(); await popup.goto(`chrome-extension://${installed.extensionId}/popup.html`);
+    await popup.evaluate(() => chrome.runtime.sendMessage({ type: 'ui.settings', quiet: false }));
     await popup.getByRole('button', { name: 'Connect', exact: true }).click();
     for (let attempt = 0; attempt < 50; attempt++) {
       try { if ((await call('status')).connected) break; } catch {}
@@ -218,6 +219,57 @@ test('expanded tools operate on local fixtures with authorization and bounded ou
         await worker.evaluate(() => { if (globalThis.releaseAttach) globalThis.releaseAttach(); globalThis.restoreAttach(); });
         await revocationPage.close();
       }
+    });
+    await t.test('focus emulation failure reports a blocker and never activates the tab', async () => {
+      await popup.evaluate(() => chrome.runtime.sendMessage({ type: 'ui.settings', quiet: true, focusEmulation: true }));
+      const before = await popup.evaluate(() => chrome.tabs.query({ active: true }).then(tabs => tabs.map(tab => tab.id)));
+      await worker.evaluate(() => {
+        const original = chrome.debugger.sendCommand.bind(chrome.debugger);
+        globalThis.restoreEmulation = () => { chrome.debugger.sendCommand = original; };
+        chrome.debugger.sendCommand = (...args) => {
+          if (args[1] === 'Emulation.setFocusEmulationEnabled') return Promise.reject(new Error('Fixture unsupported emulation'));
+          return original(...args);
+        };
+      });
+      try {
+        await assert.rejects(call('snapshot', { tabId }), { code: 'FOCUS_EMULATION_UNAVAILABLE' });
+        assert.deepEqual(await popup.evaluate(() => chrome.tabs.query({ active: true }).then(tabs => tabs.map(tab => tab.id))), before);
+      } finally { await worker.evaluate(() => globalThis.restoreEmulation()); }
+      await popup.evaluate(() => chrome.runtime.sendMessage({ type: 'ui.settings', allowNewTabs: true }));
+      await worker.evaluate(() => {
+        const original = chrome.windows.getLastFocused.bind(chrome.windows);
+        globalThis.restoreLastWindow = () => { chrome.windows.getLastFocused = original; };
+        chrome.windows.getLastFocused = () => Promise.reject(new Error('Fixture no normal windows'));
+      });
+      const count = await popup.evaluate(() => chrome.tabs.query({}).then(tabs => tabs.length));
+      try {
+        await assert.rejects(call('open', { url }), { code: 'QUIET_MODE' });
+        assert.equal(await popup.evaluate(() => chrome.tabs.query({}).then(tabs => tabs.length)), count);
+      } finally { await worker.evaluate(() => globalThis.restoreLastWindow()); }
+    });
+    await t.test('changing quiet policy cancels an activation paused before selecting its tab', async () => {
+      await popup.evaluate(() => chrome.runtime.sendMessage({ type: 'ui.settings', quiet: false }));
+      await worker.evaluate(() => {
+        const original = chrome.windows.get.bind(chrome.windows);
+        globalThis.restoreWindowGet = () => { chrome.windows.get = original; };
+        chrome.windows.get = async (...args) => {
+          await new Promise(resolve => { globalThis.resumeWindowGet = resolve; });
+          return original(...args);
+        };
+      });
+      const before = await popup.evaluate(() => chrome.tabs.query({ active: true }).then(tabs => tabs.map(tab => tab.id)));
+      try {
+        const pending = call('activate', { tabId }).catch(error => error);
+        for (let attempt = 0; attempt < 100; attempt++) {
+          if (await worker.evaluate(() => typeof globalThis.resumeWindowGet === 'function')) break;
+          await new Promise(resolve => setTimeout(resolve, 20));
+        }
+        assert.equal(await worker.evaluate(() => typeof globalThis.resumeWindowGet), 'function');
+        await popup.evaluate(() => chrome.runtime.sendMessage({ type: 'ui.settings', quiet: true }));
+        await worker.evaluate(() => globalThis.resumeWindowGet());
+        assert.equal((await pending).code, 'CANCELLED');
+        assert.deepEqual(await popup.evaluate(() => chrome.tabs.query({ active: true }).then(tabs => tabs.map(tab => tab.id))), before);
+      } finally { await worker.evaluate(() => { globalThis.resumeWindowGet?.(); globalThis.restoreWindowGet(); }); }
     });
   } finally {
     await context?.close(); await new Promise(resolve => server.close(resolve));

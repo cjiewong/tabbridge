@@ -138,6 +138,16 @@ node bin/tabbridge.mjs network 123 --json '{"action":"stop"}' --session research
 
 Network capture is explicit and bounded, omits headers/bodies and removes queries/fragments/credentials from URLs. Request paths can still contain private information. Capture is cleared on release, revocation or debugger detach; a stop retains its bounded records until then. Screenshot limits are 16,384 pixels per side, 32 million pixels and the existing image-message size cap. Choose `fullPage` or an element ref rather than combining them. See the [feature comparison](docs/FEATURE_COMPARISON.md) for the scope relative to other browser MCP projects.
 
+### Work in the background without switching to Chrome
+
+**Do not disturb** is on by default, including upgrades without a saved preference. The extension rejects `activate`, arbitrary `evaluate`, and closing the selected tab with `QUIET_MODE`. New tabs open in an existing normal Chrome window without selecting them; if no such window exists, opening is refused. Release selected tabs instead of closing them. `browser_status` reports `quiet`, `focusEmulation` and the effective developer capability. Agents cannot change these preferences through CLI/MCP; use the popup.
+
+Under **Advanced settings**, optionally enable **Background focus emulation** (off by default). It uses Chrome's focus emulation on authorized debugger sessions so some background pages can render their content without selecting a tab or bringing a window forward. Snapshot/read/wait results mark `focusEmulated: true`; the reported document visibility/focus is then simulated, while `active` and `windowFocused` remain Chrome's actual tab/window metadata. This is not proof of macOS desktop focus or application readiness. Check the expected content explicitly.
+
+Changing either preference cancels in-flight browser actions and detaches debugger sessions, invalidating old refs and clearing recordings. Release, revoke, Stop and debugger detach also clear active emulation. Quiet preferences survive browser restart and Stop; turning quiet off also turns emulation off. A saved developer opt-in is suspended while quiet is on and resumes when it is turned off. Reads never fall back to foreground activation if emulation is unavailable, the page is frozen/discarded, or the content fails to appear.
+
+In quiet mode, `scroll` scrolls the document directly and returns its position; it does not send a wheel event to a nested container. Ordinary input still uses the target tab's browser input APIs. Website-created popups, browser permission UI, downloads, sounds and OS behavior are not fully isolated by this mode. It prevents TabBridge's explicit foreground actions, not every possible website side effect. Tests verify a separate unfocused Chrome window without driver focus emulation; continuous typing across macOS Spaces has not been validated. Use a separate browser environment if full desktop isolation is required.
+
 ### Navigation and page readiness
 
 `open` returns a tab ID immediately and includes `loading`; it does not claim the page has finished loading. `snapshot`, `read`, `screenshot` and `wait` wait for a pending HTTP(S) navigation to commit and for `DOMContentLoaded` to finish. Their optional `timeoutMs` defaults to 8,000 and is bounded to 0–12,000. Navigation, DOM readiness and a text wait share one budget, also capped by the request deadline. The initial `about:blank`/empty URL of an agent-created tab is only a waiting state; it does not authorize inspecting arbitrary blank or protected pages. Writes are not retried.
@@ -153,7 +163,7 @@ A `PAGE_LOADING` or `READINESS_TIMEOUT` is a bounded observation failure. Inspec
 
 ### Foreground dialogs and user handoffs
 
-`browser_activate` (CLI: `activate TAB`) selects the target tab and brings its Chrome window forward. It uses the same tab grants, exclusions and session ownership as other actions; JavaScript evaluation is not required. Snapshots report `active` and `windowFocused` along with document visibility/focus so agents can distinguish a selected tab from a visible, focused page. Pass optional `waitForText` and `timeoutMs` to activation to wait for the intended content before it returns. If that wait fails, activation may already have changed the foreground window.
+With **Do not disturb** disabled by the user, `browser_activate` (CLI: `activate TAB`) selects the target tab and brings its Chrome window forward. It uses the same tab grants, exclusions and session ownership as other actions; JavaScript evaluation is not required. Snapshots report `active` and `windowFocused` along with document visibility/focus so agents can distinguish a selected tab from a visible, focused page. Pass optional `waitForText` and `timeoutMs` to activation to wait for the intended content before it returns. If that wait fails, activation may already have changed the foreground window.
 
 ```sh
 node bin/tabbridge.mjs activate 123 --json '{"waitForText":"Expected table heading","timeoutMs":8000}' --session research

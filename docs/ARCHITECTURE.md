@@ -38,6 +38,14 @@ Plain text extraction returns a bounded rendered body/subtree without reading in
 
 Network capture is explicitly enabled per authorized tab and records at most 100 HTTP(S) request metadata entries in memory. It strips URL query/fragment/credential information and does not store request headers, cookies, post data or response bodies. Stop retains the bounded records for inspection; release/revocation/debugger detach clears them. There is no persistent cross-tab index.
 
+## Background interaction policy
+
+Local settings default to `quiet: true` and `focusEmulation: false`. The worker rejects activation and arbitrary evaluation before dispatch in quiet mode, checks a policy revision after asynchronous preparation, and refuses closing a selected tab. Opening requires an existing normal window and uses `active: false`. Preferences have no CLI/MCP mutation endpoint. They are separate from access grants.
+
+Changing quiet/emulation invalidates active action scopes synchronously and detaches all known debugger sessions. Each subsequent attachment applies `Emulation.setFocusEmulationEnabled` only when both settings are enabled, rechecking authorization before and after the command. Failure detaches and reports a blocker; it never invokes activation. Release, revoke, Stop and detach discard emulation tracking. The observation result distinguishes `focusEmulated` from actual Chrome tab/window metadata. A changing preference does not undo an already-dispatched action.
+
+Quiet scrolling uses a bounded one-shot document `scrollBy` because background wheel acknowledgements can stall without a painted surface. The extension does not rewrite focus/visibility properties or disable browser security controls. Browser- or website-created windows and OS desktop behavior are outside the strict guarantee of blocking explicit TabBridge activation.
+
 ## Recovery
 
 - Native host startup rejects a live socket belonging to another Chrome profile. It only removes a same-user, stale Unix socket.

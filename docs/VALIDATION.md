@@ -1,6 +1,6 @@
 # Validation
 
-Latest local validation on 2026-10-10 used macOS (Apple Silicon), Node.js 25.8.1 and Chrome for Testing 156.0.8078.4 from the installed Playwright dependency. The preceding maintenance/distribution changes also passed on Node.js 22.23.3. Chrome runs in disposable profiles with isolated Native Messaging registration and local HTTP fixtures. No ordinary browser profile or signed-in website was used.
+Latest local validation on 2026-10-12 used macOS (Apple Silicon), Node.js 25.8.1 and Chrome for Testing 156.0.8078.4 from the installed Playwright dependency. The preceding maintenance/distribution changes also passed on Node.js 22.23.3. Chrome runs in disposable profiles with isolated Native Messaging registration and local HTTP fixtures. No ordinary browser profile or signed-in website was used.
 
 ## Checks passed
 
@@ -8,7 +8,7 @@ Latest local validation on 2026-10-10 used macOS (Apple Silicon), Node.js 25.8.1
 - 15 unit/MCP/distribution tests: fragmented framing, malformed/truncated frames, request validation, independent lease/origin checks, official MCP SDK negotiation, malformed tool arguments (including types, numeric bounds, prototype-named fields and nested batches), MCP lifecycle/input limits, platform registration paths, isolated setup/uninstall, repeatable archives, stale ZIP entry removal and rejection of symlinked files/directories.
 - Actual npm tarball extraction and CLI/setup/uninstall smoke check without runtime dependencies or a browser connection.
 - GitHub Actions workflow checked with actionlint 1.7.12; issue forms and Dependabot YAML parsed locally.
-- 51 real-browser checks within the E2E suite (55 Node test results including the four parent suites):
+- 59 real-browser checks within the E2E suite (64 Node test results including the five parent suites):
   1. Chrome extension → Native Messaging host handshake.
   2. Unshared tabs remain absent from agent discovery; new tabs disabled by default.
   3. Explicit claim, session isolation, user-tab close refusal and origin scope.
@@ -60,8 +60,16 @@ Latest local validation on 2026-10-10 used macOS (Apple Silicon), Node.js 25.8.1
   49. Initial navigation timeout reports PAGE_LOADING and the session can close its still-loading owned tab.
   50. Revocation during an initial blank wait aborts observation and never restores the grant.
   51. Initial waiting permission is cleared in memory and session storage on HTTP commit, without requiring an agent read; later about:blank navigation revokes access and ordinary blank tabs remain unsupported.
+  52. Quiet defaults refuse foreground activation and arbitrary evaluation through native CLI transport and MCP; expected background content times out with a blocker.
+  53. Background fill/key/click, one-shot document scroll and PNG capture preserve selected tabs and the last-focused window, while the target remains in a separate unfocused window.
+  54. Explicit focus emulation reveals a visibility/focus-gated table without actual tab/window activation and reports simulated focus; the override continues across navigation.
+  55. Turning emulation off, release and revocation restore real document focus/visibility and do not restore revoked access.
+  56. Quiet/emulation preferences persist across popup reopening; user opt-out permits activation, and selected-tab closure is denied after quiet is restored.
+  57. Simulated unsupported emulation returns a blocker without activation; simulated absence of a normal window refuses opening without creating any tab.
+  58. Enabling quiet while activation is paused before selecting the tab cancels that activation; selected tabs remain unchanged.
+  59. Chinese/English popup switches persist, gate scripting, expose the optional simulation state and fit the fixed footer; screenshots were visually reviewed.
 
-The foreground fixture launches its own disposable Chrome process and attaches the test driver to an ephemeral loopback debugging endpoint with `noDefaults: true`. This avoids synthetic focus/visibility overrides and does not disable Chrome's sandbox. Production TabBridge transport remains Native Messaging and a private Unix socket; it does not expose a debugging port.
+The foreground and quiet fixtures launch their own disposable Chrome processes and attaches the test driver to an ephemeral loopback debugging endpoint with `noDefaults: true`. This avoids synthetic focus/visibility overrides and does not disable Chrome's sandbox. Production TabBridge transport remains Native Messaging and a private Unix socket; it does not expose a debugging port.
 
 The E2E browser fixtures enable Chrome's sandbox. Ubuntu CI configures the matching downloaded Chrome for Testing sandbox helper with root ownership/mode 4755 and a process-local `CHROME_DEVEL_SANDBOX` setting; it does not disable AppArmor or the browser sandbox.
 
@@ -69,6 +77,8 @@ The E2E browser fixtures enable Chrome's sandbox. Ubuntu CI configures the match
 
 These are functional tests, not a claim of feature parity, a formal security audit or a long-term availability benchmark. Windows is unsupported. Ordinary-profile installation still requires the user to load the unpacked extension and explicitly select its access mode.
 
-Hosted [CI run for a688418](https://github.com/cjiewong/tabbridge/actions/runs/38031999423) passed on 2026-10-10: Node.js 22/24 unit/package checks on macOS and Ubuntu, real-browser suites on both operating systems, and release artifact generation. That commit includes expanded capabilities, popup layout and sandbox configuration. The navigation/readiness regressions above were verified locally; consult [Actions](https://github.com/cjiewong/tabbridge/actions) for the corresponding newer commit's result rather than treating the earlier run as evidence for untested later changes.
+Hosted [CI run for ba2fb94](https://github.com/cjiewong/tabbridge/actions/runs/38057262892) passed on 2026-10-10: Node.js 22/24 unit/package checks on macOS and Ubuntu, real-browser suites on both operating systems, and release artifact generation. That commit includes expanded capabilities, popup layout and navigation/readiness behavior. The quiet-mode regressions above were verified locally; consult [Actions](https://github.com/cjiewong/tabbridge/actions) for the corresponding newer commit's result rather than treating the earlier run as evidence for untested later changes.
+
+Quiet tests run with `noDefaults: true`, so only TabBridge supplies the optional focus emulation. They verify browser-level state with a separate unfocused window. They do not validate macOS Spaces transitions or a user typing continuously in another native application, and do not guarantee suppression of website popups, browser UI or OS effects.
 
 Branch protection is a separate repository setting. Private vulnerability reporting was enabled and verified through the GitHub API.

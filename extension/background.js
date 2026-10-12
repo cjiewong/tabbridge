@@ -1,9 +1,13 @@
 import { fail, webURL, requireTabId, requireLease, validSession, pendingWebURL } from './policy.js';
-import { detach, invalidate, runAction } from './browser.js';
+import { detach, invalidate, runAction, resetBrowserSessions } from './browser.js';
 
 const HOST = 'io.github.cjiewong.tabbridge';
 let port; let connected = false; let lastError = ''; let reconnectTimer; let retryDelay = 500;
-let settings = { enabled: false, allowAllTabs: false, allowNewTabs: false, developer: false };
+let settings = { enabled: false, allowAllTabs: false, allowNewTabs: false, developer: false, quiet: true, focusEmulation: false };
+let interactionRevision = 0;
+function checkQuiet(method) {
+  if (settings.quiet && ['activate', 'evaluate'].includes(method)) fail('QUIET_MODE', 'Do not disturb is enabled. Foreground activation and arbitrary JavaScript are blocked. Continue in the background or report the blocker; only the user can change this setting in the popup');
+}
 let leases = {}; let blockedTabs = {}; const locks = new Map(); const activeRequests = new Map();
 let uiNotification;
 function notifyUI() {
@@ -95,7 +99,13 @@ async function execute(message, control) {
 }
 async function dispatch(method, params, session, deadline, control) {
   if (!settings.enabled) fail('STOPPED', 'TabBridge is stopped');
-  if (method === 'status') return { connected, version: chrome.runtime.getManifest().version, protocol: 1, allowAllTabs: settings.allowAllTabs, allowNewTabs: settings.allowNewTabs, developer: settings.developer, session };
+  if (method === 'status') return { connected, version: chrome.runtime.getManifest().version, protocol: 1, allowAllTabs: settings.allowAllTabs, allowNewTabs: settings.allowNewTabs, developer: settings.developer && !settings.quiet, quiet: settings.quiet, focusEmulation: settings.quiet && settings.focusEmulation, session };
+  checkQuiet(method);
+  const revision = interactionRevision;
+  const checkInteraction = () => {
+    if (revision !== interactionRevision) fail('CANCELLED', 'Interaction settings changed during this request; inspect state before continuing');
+    checkQuiet(method);
+  };
   if (method === 'tabs') {
     const result = [];
     const candidates = settings.allowAllTabs ? await chrome.tabs.query({}) : (await Promise.all(Object.keys(leases).map(id => chrome.tabs.get(Number(id)).catch(() => null)))).filter(Boolean);
@@ -114,7 +124,15 @@ async function dispatch(method, params, session, deadline, control) {
   if (method === 'open') {
     if (!settings.allowNewTabs) fail('NEW_TABS_DISABLED', 'Enable agent-created tabs in the TabBridge popup');
     const url = webURL(params.url).href;
-    const tab = await chrome.tabs.create({ url, active: false });
+    let windowId;
+    if (settings.quiet) {
+      const window = await chrome.windows.getLastFocused({ windowTypes: ['normal'] }).catch(() => null);
+      if (!window) fail('QUIET_MODE', 'No existing normal Chrome window is available. Do not disturb will not create a foreground window; open a window manually first');
+      windowId = window.id;
+    }
+    checkInteraction();
+    if (!settings.enabled || !settings.allowNewTabs) fail('NEW_TABS_DISABLED', 'Creating tabs was disabled');
+    const tab = await chrome.tabs.create({ url, active: false, ...(windowId !== undefined ? { windowId } : {}) });
     leases[tab.id] = { owned: true, session, origin: new URL(url).origin, ...(!isWebTab(tab) ? { openingUrl: url } : {}) }; await saveLeases();
     return { tabId: tab.id, url, owned: true, loading: !isWebTab(tab) || tab.status === 'loading' };
   }
@@ -138,14 +156,17 @@ async function dispatch(method, params, session, deadline, control) {
     lease.session = session; await saveLeases(); checkLease(tabId, session, tab.url); return { tabId, title: tab.title, url: tab.url };
   }
   checkLease(tabId, session, initialCleanup?.href || tab.url);
-  const context = { deadline, control, observationDeadline: end, authorize: url => { if (!settings.enabled) fail('STOPPED', 'TabBridge was stopped'); return checkLease(tabId, session, url); } };
+  checkInteraction();
+  const context = { deadline, control, observationDeadline: end, checkInteraction, authorize: url => { if (!settings.enabled) fail('STOPPED', 'TabBridge was stopped'); return checkLease(tabId, session, url); } };
   if (method === 'activate') {
     const window = await chrome.windows.get(tab.windowId);
     if (!settings.enabled) fail('STOPPED', 'TabBridge was stopped');
     checkLease(tabId, session, (await chrome.tabs.get(tabId)).url);
+    checkInteraction();
     await chrome.tabs.update(tabId, { active: true });
     if (!settings.enabled) fail('STOPPED', 'TabBridge was stopped');
     checkLease(tabId, session, (await chrome.tabs.get(tabId)).url);
+    checkInteraction();
     await chrome.windows.update(tab.windowId, { focused: true, ...(window.state === 'minimized' ? { state: 'normal' } : {}) });
     const [currentTab, currentWindow] = await Promise.all([chrome.tabs.get(tabId), chrome.windows.get(tab.windowId)]);
     const result = { tabId, windowId: currentTab.windowId, active: currentTab.active, windowFocused: currentWindow.focused, windowState: currentWindow.state };
@@ -162,6 +183,9 @@ async function dispatch(method, params, session, deadline, control) {
   }
   if (method === 'close') {
     if (!lease.owned && !allAccess(tabId)) fail('USER_TAB', 'Enable All web tabs to close a user-owned tab, or release it instead');
+    const current = await chrome.tabs.get(tabId);
+    checkInteraction();
+    if (settings.quiet && current.active) fail('QUIET_MODE', 'Closing the selected tab would select a different tab. Keep it open and release control while Do not disturb is enabled');
     await chrome.tabs.remove(tabId); delete leases[tabId]; await saveLeases(); return { closed: tabId };
   }
   if (method === 'batch') {
@@ -225,7 +249,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       case 'ui.connect': settings.enabled = true; await chrome.storage.local.set({ settings }); connect(); return { ok: true };
       case 'ui.settings': return serial('ui:settings', async () => {
         const wasAll = settings.allowAllTabs;
-        for (const key of ['allowAllTabs', 'allowNewTabs', 'developer']) if (typeof message[key] === 'boolean') settings[key] = message[key];
+        const wasQuiet = settings.quiet; const wasEmulated = settings.focusEmulation;
+        for (const key of ['allowAllTabs', 'allowNewTabs', 'developer', 'quiet', 'focusEmulation']) if (typeof message[key] === 'boolean') settings[key] = message[key];
+        if (!settings.quiet) settings.focusEmulation = false;
+        if (wasQuiet !== settings.quiet || wasEmulated !== settings.focusEmulation) {
+          interactionRevision++;
+          await resetBrowserSessions();
+        }
         await chrome.storage.local.set({ settings });
         if (wasAll && !settings.allowAllTabs) {
           for (const [id, lease] of Object.entries(leases)) {
