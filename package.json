@@ -15,7 +15,7 @@
     "test:package": "node scripts/smoke-package.mjs",
     "pack:release": "node scripts/package-release.mjs"
   },
-  "devDependencies": { "@modelcontextprotocol/sdk": "^1.0.0", "playwright": "^1.0.0" },
+  "devDependencies": { "@modelcontextprotocol/sdk": "^1.32.2", "playwright": "^1.64.1" },
   "repository": { "type": "git", "url": "https://github.com/cjiewong/tabbridge.git" },
   "homepage": "https://github.com/cjiewong/tabbridge#readme",
   "bugs": { "url": "https://github.com/cjiewong/tabbridge/issues" },
